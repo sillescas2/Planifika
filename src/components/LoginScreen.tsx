@@ -240,9 +240,29 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onSuccess }) => {
           {/* Form */}
           <form onSubmit={handleAuthSubmit} className="space-y-4">
             {errorMsg && (
-              <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-xl flex items-start gap-2 animate-in fade-in">
-                <HelpCircle className="w-4 h-4 shrink-0 text-rose-500 mt-0.5" />
-                <span>{errorMsg}</span>
+              <div className="p-3 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-xl flex flex-col gap-2 animate-in fade-in">
+                <div className="flex items-start gap-2">
+                  <HelpCircle className="w-4 h-4 shrink-0 text-rose-500 mt-0.5" />
+                  <span className="leading-snug">{errorMsg}</span>
+                </div>
+                {(errorMsg.includes('Invalid path') || errorMsg.includes('URL') || errorMsg.includes('Supabase')) && (
+                  <div className="mt-1 pt-2 border-t border-rose-200/60 flex flex-wrap gap-2 items-center justify-between">
+                    <span className="text-[10px] text-rose-600 font-medium">
+                      ¿Problema con la URL de Supabase?
+                    </span>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        await planifikaService.setCredentials('', '');
+                        setErrorMsg('');
+                        showToast('Cambiado a Modo Local / Demostración. Ahora puedes registrarte o entrar sin depender de Supabase.', 'info');
+                      }}
+                      className="px-2 py-1 bg-white border border-rose-300 hover:bg-rose-100 text-[10px] font-bold text-rose-800 rounded-lg transition-all cursor-pointer shadow-2xs"
+                    >
+                      Activar Modo Local y Probar
+                    </button>
+                  </div>
+                )}
               </div>
             )}
 

@@ -315,6 +315,39 @@ function generateInitialLocalStore(): LocalStoreData {
   };
 }
 
+export function sanitizeSupabaseUrl(rawUrl: string): string {
+  if (!rawUrl) return '';
+  let url = rawUrl.trim().replace(/^["']|["']$/g, '');
+
+  // Detect dashboard URL: https://supabase.com/dashboard/project/<project_ref>
+  const dashboardMatch = url.match(/supabase\.com\/dashboard\/project\/([a-zA-Z0-9_-]+)/);
+  if (dashboardMatch && dashboardMatch[1]) {
+    return `https://${dashboardMatch[1]}.supabase.co`;
+  }
+
+  // Strip trailing slashes
+  url = url.replace(/\/+$/, '');
+
+  // Strip /rest/v1 or /rest/v1/ (common copy-paste pitfall)
+  url = url.replace(/\/rest\/v1\/?$/, '');
+
+  // Strip /auth/v1 or /auth/v1/
+  url = url.replace(/\/auth\/v1\/?$/, '');
+
+  // Ensure protocol
+  if (!url.startsWith('http://') && !url.startsWith('https://')) {
+    url = `https://${url}`;
+  }
+
+  // Final trim of trailing slashes
+  return url.replace(/\/+$/, '');
+}
+
+export function sanitizeSupabaseAnonKey(rawKey: string): string {
+  if (!rawKey) return '';
+  return rawKey.trim().replace(/^["']|["']$/g, '');
+}
+
 class PlanifikaDataService {
   private supabase: SupabaseClient | null = null;
   private isLiveConnected = false;
@@ -343,12 +376,26 @@ class PlanifikaDataService {
       }
     }
 
-    this.configUrl = url;
-    this.configKey = key;
+    const cleanUrl = sanitizeSupabaseUrl(url);
+    const cleanKey = sanitizeSupabaseAnonKey(key);
 
-    if (url && key && url.startsWith('http')) {
+    // If stored URL had invalid path or extra slashes, auto-fix in localStorage
+    if (stored && (cleanUrl !== url || cleanKey !== key)) {
       try {
-        this.supabase = createClient(url, key, {
+        localStorage.setItem(STORAGE_KEYS.SUPABASE_CONFIG, JSON.stringify({ url: cleanUrl, anonKey: cleanKey }));
+      } catch (e) {
+        // ignore
+      }
+    }
+
+    this.configUrl = cleanUrl;
+    this.configKey = cleanKey;
+
+    const isPlaceholder = cleanUrl.includes('tu-proyecto.supabase.co') || cleanKey.includes('tu-anon-key-aqui');
+
+    if (cleanUrl && cleanKey && cleanUrl.startsWith('http') && !isPlaceholder) {
+      try {
+        this.supabase = createClient(cleanUrl, cleanKey, {
           auth: {
             persistSession: true,
             autoRefreshToken: true,
@@ -360,6 +407,9 @@ class PlanifikaDataService {
         this.supabase = null;
         this.isLiveConnected = false;
       }
+    } else {
+      this.supabase = null;
+      this.isLiveConnected = false;
     }
   }
 
@@ -385,17 +435,27 @@ class PlanifikaDataService {
       return { success: true, message: 'Modo Local / Demostración activado' };
     }
 
+    const cleanUrl = sanitizeSupabaseUrl(url);
+    const cleanKey = sanitizeSupabaseAnonKey(anonKey);
+
     try {
-      const testClient = createClient(url, anonKey);
+      const testClient = createClient(cleanUrl, cleanKey);
       // Quick ping test
       const { error } = await testClient.from('calendars').select('id').limit(1);
       
-      // Save
-      localStorage.setItem(STORAGE_KEYS.SUPABASE_CONFIG, JSON.stringify({ url, anonKey }));
+      if (error && error.message && error.message.includes('Invalid path specified in request URL')) {
+        return {
+          success: false,
+          message: 'Error en la URL: asegurate de copiar la Project URL base (ej: https://xyz.supabase.co) sin añadir /rest/v1 ni barras al final.',
+        };
+      }
+
+      // Save sanitized
+      localStorage.setItem(STORAGE_KEYS.SUPABASE_CONFIG, JSON.stringify({ url: cleanUrl, anonKey: cleanKey }));
       this.supabase = testClient;
       this.isLiveConnected = true;
-      this.configUrl = url;
-      this.configKey = anonKey;
+      this.configUrl = cleanUrl;
+      this.configKey = cleanKey;
 
       if (error && error.code !== 'PGRST116') {
         return {
@@ -569,6 +629,17 @@ class PlanifikaDataService {
           return { success: true, user };
         }
 
+        // Si la URL contiene /rest/v1 o trailing slash, auto-corregir y reintentar
+        const rawErrMsg = error?.message || '';
+        if (rawErrMsg.includes('Invalid path specified in request URL')) {
+          const currentUrl = this.configUrl;
+          const cleaned = sanitizeSupabaseUrl(currentUrl);
+          if (cleaned !== currentUrl) {
+            await this.setCredentials(cleaned, this.configKey);
+            return this.registerUser(emailInput, passwordInput, fullNameInput, role);
+          }
+        }
+
         // Si la función RPC no existe, intentar insert directo en public.users
         const { data: insertData, error: insertError } = await this.supabase
           .from('users')
@@ -595,13 +666,33 @@ class PlanifikaDataService {
         }
 
         if (error || insertError) {
+          const rawErr = (error || insertError)?.message || '';
+          if (rawErr.includes('Invalid path specified in request URL') || (insertError as any)?.code === '44000') {
+            return {
+              success: false,
+              error: 'Error en la URL de Supabase ("Invalid path specified in request URL"). La URL del proyecto debe ser la URL base (ej: https://xyz.supabase.co) sin añadir "/rest/v1" ni barras al final "/".',
+            };
+          }
+          if (rawErr.includes('does not exist') || (insertError as any)?.code === '42P01') {
+            return {
+              success: false,
+              error: 'La tabla "users" no existe aún en tu base de datos Supabase. Ejecuta el script SQL en Supabase > SQL Editor.',
+            };
+          }
           return {
             success: false,
-            error: (error || insertError)?.message || 'Error al guardar el usuario en la tabla users de Supabase.',
+            error: rawErr || 'Error al guardar el usuario en la tabla users de Supabase.',
           };
         }
       } catch (err: any) {
         console.warn('Error en registro remoto Supabase:', err);
+        const msg = err?.message || '';
+        if (msg.includes('Invalid path specified in request URL')) {
+          return {
+            success: false,
+            error: 'Error en la URL de Supabase ("Invalid path specified in request URL"). La URL debe ser https://xyz.supabase.co sin "/rest/v1".',
+          };
+        }
       }
     }
 

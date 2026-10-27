@@ -339,12 +339,15 @@ export const SettingsView: React.FC = () => {
                   Project URL (VITE_SUPABASE_URL)
                 </label>
                 <input
-                  type="url"
+                  type="text"
                   placeholder="https://xxxxxxxxxxxx.supabase.co"
                   value={url}
                   onChange={(e) => setUrl(e.target.value)}
                   className="w-full px-3.5 py-2 text-xs font-mono bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900"
                 />
+                <p className="text-[11px] text-slate-500 mt-1">
+                  ⚠️ <strong>Importante:</strong> Debe ser la <em>Project URL</em> base (ej: <code className="text-slate-800 bg-slate-100 px-1 py-0.5 rounded">https://xyzcompany.supabase.co</code>). <strong>NO</strong> añadas <code className="text-rose-600 bg-rose-50 px-1 py-0.5 rounded">/rest/v1</code> ni barras al final <code className="text-rose-600 bg-rose-50 px-1 py-0.5 rounded">/</code>, ya que causará el error <em>&quot;Invalid path specified in request URL&quot;</em>.
+                </p>
               </div>
 
               <div>
