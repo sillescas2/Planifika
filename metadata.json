@@ -1,0 +1,6 @@
+{
+  "name": "Planifika",
+  "description": "Planificador horario semanal colaborativo con control de permisos, gestión de tareas y sincronización Supabase.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
