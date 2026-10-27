@@ -8,24 +8,48 @@ const STORAGE_KEYS = {
   ACTIVE_USER_ID: 'planifika_active_user_id',
 };
 
-// Default demonstration profiles
+export const DEMO_UUIDS = {
+  CARLOS: 'a0000000-0000-0000-0000-000000000001',
+  ELENA: 'a0000000-0000-0000-0000-000000000002',
+  DAVID: 'a0000000-0000-0000-0000-000000000003',
+};
+
+export const LEGACY_USER_ID_MAP: Record<string, string> = {
+  'usr-admin-carlos': DEMO_UUIDS.CARLOS,
+  'usr-editor-elena': DEMO_UUIDS.ELENA,
+  'usr-viewer-david': DEMO_UUIDS.DAVID,
+};
+
+export function isUuid(id?: string | null): boolean {
+  if (!id) return false;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+}
+
+export function sanitizeUserId(id?: string | null): string {
+  if (!id) return DEMO_UUIDS.CARLOS;
+  if (LEGACY_USER_ID_MAP[id]) return LEGACY_USER_ID_MAP[id];
+  if (isUuid(id)) return id;
+  return DEMO_UUIDS.CARLOS;
+}
+
+// Default demonstration profiles with valid PostgreSQL UUIDs matching supabase/schema.sql
 export const DEMO_PROFILES: UserProfile[] = [
   {
-    id: 'usr-admin-carlos',
+    id: DEMO_UUIDS.CARLOS,
     email: 'carlos.admin@planifika.app',
     full_name: 'Carlos Martínez (Administrador)',
     avatar_url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Carlos',
     system_role: 'admin',
   },
   {
-    id: 'usr-editor-elena',
+    id: DEMO_UUIDS.ELENA,
     email: 'elena.editor@planifika.app',
     full_name: 'Elena Ramos (Editora)',
     avatar_url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Elena',
     system_role: 'user',
   },
   {
-    id: 'usr-viewer-david',
+    id: DEMO_UUIDS.DAVID,
     email: 'david.viewer@planifika.app',
     full_name: 'David Soto (Espectador)',
     avatar_url: 'https://api.dicebear.com/7.x/avataaars/svg?seed=David',
@@ -48,7 +72,7 @@ export interface AppUserAccount {
 
 export const INITIAL_DEMO_ACCOUNTS: AppUserAccount[] = [
   {
-    id: 'usr-admin-carlos',
+    id: DEMO_UUIDS.CARLOS,
     email: 'carlos.admin@planifika.app',
     password: 'password123',
     full_name: 'Carlos Martínez (Administrador)',
@@ -56,7 +80,7 @@ export const INITIAL_DEMO_ACCOUNTS: AppUserAccount[] = [
     system_role: 'admin',
   },
   {
-    id: 'usr-editor-elena',
+    id: DEMO_UUIDS.ELENA,
     email: 'elena.editor@planifika.app',
     password: 'password123',
     full_name: 'Elena Ramos (Editora)',
@@ -64,7 +88,7 @@ export const INITIAL_DEMO_ACCOUNTS: AppUserAccount[] = [
     system_role: 'user',
   },
   {
-    id: 'usr-viewer-david',
+    id: DEMO_UUIDS.DAVID,
     email: 'david.viewer@planifika.app',
     password: 'password123',
     full_name: 'David Soto (Espectador)',
@@ -97,7 +121,7 @@ function generateInitialLocalStore(): LocalStoreData {
       name: 'Planificación Sprint Producto & QA',
       description: 'Tablero semanal del equipo de ingeniería, producto y diseño.',
       color_theme: 'blue',
-      owner_id: 'usr-admin-carlos',
+      owner_id: DEMO_UUIDS.CARLOS,
       created_at: new Date(Date.now() - 30 * 86400000).toISOString(),
     },
     {
@@ -105,7 +129,7 @@ function generateInitialLocalStore(): LocalStoreData {
       name: 'Campaña Growth & Marketing Q4',
       description: 'Lanzamiento de contenidos, newsletters y redes sociales.',
       color_theme: 'emerald',
-      owner_id: 'usr-admin-carlos',
+      owner_id: DEMO_UUIDS.CARLOS,
       created_at: new Date(Date.now() - 15 * 86400000).toISOString(),
     },
   ];
@@ -114,41 +138,41 @@ function generateInitialLocalStore(): LocalStoreData {
     {
       id: 'perm-1',
       calendar_id: 'cal-product-team',
-      user_id: 'usr-admin-carlos',
+      user_id: DEMO_UUIDS.CARLOS,
       role: 'admin',
-      granted_by: 'usr-admin-carlos',
+      granted_by: DEMO_UUIDS.CARLOS,
       created_at: new Date().toISOString(),
     },
     {
       id: 'perm-2',
       calendar_id: 'cal-product-team',
-      user_id: 'usr-editor-elena',
+      user_id: DEMO_UUIDS.ELENA,
       role: 'editor',
-      granted_by: 'usr-admin-carlos',
+      granted_by: DEMO_UUIDS.CARLOS,
       created_at: new Date().toISOString(),
     },
     {
       id: 'perm-3',
       calendar_id: 'cal-product-team',
-      user_id: 'usr-viewer-david',
+      user_id: DEMO_UUIDS.DAVID,
       role: 'viewer',
-      granted_by: 'usr-admin-carlos',
+      granted_by: DEMO_UUIDS.CARLOS,
       created_at: new Date().toISOString(),
     },
     {
       id: 'perm-4',
       calendar_id: 'cal-marketing-growth',
-      user_id: 'usr-admin-carlos',
+      user_id: DEMO_UUIDS.CARLOS,
       role: 'admin',
-      granted_by: 'usr-admin-carlos',
+      granted_by: DEMO_UUIDS.CARLOS,
       created_at: new Date().toISOString(),
     },
     {
       id: 'perm-5',
       calendar_id: 'cal-marketing-growth',
-      user_id: 'usr-editor-elena',
+      user_id: DEMO_UUIDS.ELENA,
       role: 'editor',
-      granted_by: 'usr-admin-carlos',
+      granted_by: DEMO_UUIDS.CARLOS,
       created_at: new Date().toISOString(),
     },
   ];
@@ -165,7 +189,7 @@ function generateInitialLocalStore(): LocalStoreData {
       week_start_date: currentWeekStr,
       time_estimate: '2h',
       position: 0,
-      created_by: 'usr-admin-carlos',
+      created_by: DEMO_UUIDS.CARLOS,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     },
@@ -180,7 +204,7 @@ function generateInitialLocalStore(): LocalStoreData {
       week_start_date: currentWeekStr,
       time_estimate: '1.5h',
       position: 1,
-      created_by: 'usr-editor-elena',
+      created_by: DEMO_UUIDS.ELENA,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     },
@@ -195,7 +219,7 @@ function generateInitialLocalStore(): LocalStoreData {
       week_start_date: currentWeekStr,
       time_estimate: '3h',
       position: 0,
-      created_by: 'usr-editor-elena',
+      created_by: DEMO_UUIDS.ELENA,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     },
@@ -210,7 +234,7 @@ function generateInitialLocalStore(): LocalStoreData {
       week_start_date: currentWeekStr,
       time_estimate: '1h',
       position: 1,
-      created_by: 'usr-admin-carlos',
+      created_by: DEMO_UUIDS.CARLOS,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     },
@@ -225,7 +249,7 @@ function generateInitialLocalStore(): LocalStoreData {
       week_start_date: currentWeekStr,
       time_estimate: '45m',
       position: 0,
-      created_by: 'usr-admin-carlos',
+      created_by: DEMO_UUIDS.CARLOS,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     },
@@ -240,7 +264,7 @@ function generateInitialLocalStore(): LocalStoreData {
       week_start_date: currentWeekStr,
       time_estimate: '2h',
       position: 0,
-      created_by: 'usr-editor-elena',
+      created_by: DEMO_UUIDS.ELENA,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     },
@@ -255,7 +279,7 @@ function generateInitialLocalStore(): LocalStoreData {
       week_start_date: currentWeekStr,
       time_estimate: '1.5h',
       position: 0,
-      created_by: 'usr-admin-carlos',
+      created_by: DEMO_UUIDS.CARLOS,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     },
@@ -270,7 +294,7 @@ function generateInitialLocalStore(): LocalStoreData {
       week_start_date: currentWeekStr,
       time_estimate: '1h',
       position: 0,
-      created_by: 'usr-admin-carlos',
+      created_by: DEMO_UUIDS.CARLOS,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     },
@@ -286,7 +310,7 @@ function generateInitialLocalStore(): LocalStoreData {
       status: 'completed',
       week_start_date: pastWeekStr,
       position: 0,
-      created_by: 'usr-admin-carlos',
+      created_by: DEMO_UUIDS.CARLOS,
       created_at: new Date(Date.now() - 8 * 86400000).toISOString(),
       updated_at: new Date(Date.now() - 7 * 86400000).toISOString(),
     },
@@ -300,7 +324,7 @@ function generateInitialLocalStore(): LocalStoreData {
       status: 'completed',
       week_start_date: pastWeekStr,
       position: 0,
-      created_by: 'usr-editor-elena',
+      created_by: DEMO_UUIDS.ELENA,
       created_at: new Date(Date.now() - 6 * 86400000).toISOString(),
       updated_at: new Date(Date.now() - 5 * 86400000).toISOString(),
     },
@@ -492,6 +516,60 @@ class PlanifikaDataService {
       store.users = [...INITIAL_DEMO_ACCOUNTS];
       localStorage.setItem(STORAGE_KEYS.LOCAL_DB, JSON.stringify(store));
     }
+
+    // Auto-migrate any legacy usr- IDs in local store to valid UUIDs
+    let hasLegacyUpdates = false;
+    if (store.users) {
+      store.users = store.users.map((u) => {
+        if (LEGACY_USER_ID_MAP[u.id]) {
+          hasLegacyUpdates = true;
+          return { ...u, id: LEGACY_USER_ID_MAP[u.id] };
+        }
+        return u;
+      });
+    }
+    if (store.profiles) {
+      store.profiles = store.profiles.map((p) => {
+        if (LEGACY_USER_ID_MAP[p.id]) {
+          hasLegacyUpdates = true;
+          return { ...p, id: LEGACY_USER_ID_MAP[p.id] };
+        }
+        return p;
+      });
+    }
+    if (store.calendars) {
+      store.calendars = store.calendars.map((c) => {
+        if (LEGACY_USER_ID_MAP[c.owner_id]) {
+          hasLegacyUpdates = true;
+          return { ...c, owner_id: LEGACY_USER_ID_MAP[c.owner_id] };
+        }
+        return c;
+      });
+    }
+    if (store.permissions) {
+      store.permissions = store.permissions.map((p) => {
+        let changed = false;
+        let uid = p.user_id;
+        let gby = p.granted_by;
+        if (LEGACY_USER_ID_MAP[uid]) {
+          uid = LEGACY_USER_ID_MAP[uid];
+          changed = true;
+        }
+        if (gby && LEGACY_USER_ID_MAP[gby]) {
+          gby = LEGACY_USER_ID_MAP[gby];
+          changed = true;
+        }
+        if (changed) {
+          hasLegacyUpdates = true;
+          return { ...p, user_id: uid, granted_by: gby };
+        }
+        return p;
+      });
+    }
+    if (hasLegacyUpdates) {
+      localStorage.setItem(STORAGE_KEYS.LOCAL_DB, JSON.stringify(store));
+    }
+
     return store;
   }
 
@@ -818,47 +896,154 @@ class PlanifikaDataService {
     return profile;
   }
 
+  /**
+   * Helper to ensure any user ID is a valid PostgreSQL UUID.
+   * Resolves legacy string IDs (e.g. 'usr-admin-carlos') to their corresponding UUIDs,
+   * queries Supabase public.users by email if necessary, and guarantees foreign key validity.
+   */
+  public async resolveSupabaseUserId(userId: string, email?: string): Promise<string> {
+    if (!this.supabase || !this.isLiveConnected) {
+      return sanitizeUserId(userId);
+    }
+
+    // 1. Direct UUID check if already valid UUID
+    if (isUuid(userId)) {
+      try {
+        const { data } = await this.supabase
+          .from('users')
+          .select('id')
+          .eq('id', userId)
+          .maybeSingle();
+        if (data?.id) return data.id;
+      } catch (e) {
+        // Continue fallback
+      }
+    }
+
+    // 2. Check legacy ID map
+    const mapped = LEGACY_USER_ID_MAP[userId];
+    if (mapped) {
+      try {
+        const { data } = await this.supabase
+          .from('users')
+          .select('id')
+          .eq('id', mapped)
+          .maybeSingle();
+        if (data?.id) return data.id;
+      } catch (e) {
+        // Continue fallback
+      }
+    }
+
+    // 3. Resolve by email
+    let candidateEmail = email?.trim().toLowerCase();
+    if (!candidateEmail) {
+      if (userId === 'usr-admin-carlos' || userId === DEMO_UUIDS.CARLOS) {
+        candidateEmail = 'carlos.admin@planifika.app';
+      } else if (userId === 'usr-editor-elena' || userId === DEMO_UUIDS.ELENA) {
+        candidateEmail = 'elena.editor@planifika.app';
+      } else if (userId === 'usr-viewer-david' || userId === DEMO_UUIDS.DAVID) {
+        candidateEmail = 'david.viewer@planifika.app';
+      }
+    }
+
+    if (candidateEmail) {
+      try {
+        const { data } = await this.supabase
+          .from('users')
+          .select('id')
+          .ilike('email', candidateEmail)
+          .maybeSingle();
+        if (data?.id) return data.id;
+      } catch (e) {
+        // Continue fallback
+      }
+    }
+
+    // 4. If user does not exist in Supabase yet (e.g. fresh DB before seeding Carlos),
+    // ensure Carlos exists with demo UUID so foreign keys on owner_id succeed:
+    if (userId === 'usr-admin-carlos' || userId === DEMO_UUIDS.CARLOS || candidateEmail === 'carlos.admin@planifika.app') {
+      try {
+        const { data } = await this.supabase
+          .from('users')
+          .upsert({
+            id: DEMO_UUIDS.CARLOS,
+            email: 'carlos.admin@planifika.app',
+            password_hash: '$2a$10$wE6vXp8F7e61hNlZ74l1jO4H3pLkW0k0x9n.3m2x5q7e.8z1k3w9e',
+            full_name: 'Carlos Martínez (Administrador)',
+            role: 'admin',
+          }, { onConflict: 'email' })
+          .select('id')
+          .maybeSingle();
+        if (data?.id) return data.id;
+      } catch (e) {
+        console.warn('Could not auto-seed Carlos in Supabase users table:', e);
+      }
+      return DEMO_UUIDS.CARLOS;
+    }
+
+    return isUuid(userId) ? userId : DEMO_UUIDS.CARLOS;
+  }
+
   // --- CALENDARS ---
-  public async getCalendarsForUser(userId: string): Promise<Calendar[]> {
+  public async getCalendarsForUser(userId: string, userEmail?: string): Promise<Calendar[]> {
     if (this.supabase && this.isLiveConnected) {
       try {
-        // Query calendars where user is owner or has permission
+        const resolvedUserId = await this.resolveSupabaseUserId(userId, userEmail);
+
+        // Query calendars with permissions - strictly filter only those where user is owner or invited member
         const { data, error } = await this.supabase
           .from('calendars')
           .select('*, calendar_permissions(role, user_id)')
           .order('created_at', { ascending: false });
 
         if (!error && data) {
-          return data.map((c: any) => {
-            const userPerm = c.calendar_permissions?.find((p: any) => p.user_id === userId);
-            const isOwner = c.owner_id === userId;
-            const role: UserRole = isOwner ? 'admin' : (userPerm?.role || 'viewer');
-            return {
-              id: c.id,
-              name: c.name,
-              description: c.description || '',
-              color_theme: c.color_theme || 'blue',
-              owner_id: c.owner_id,
-              created_at: c.created_at,
-              updated_at: c.updated_at,
-              role,
-            };
-          });
+          const userCalendars = data
+            .filter((c: any) => {
+              const isOwner = c.owner_id === userId || c.owner_id === resolvedUserId;
+              const hasPerm = c.calendar_permissions?.some(
+                (p: any) => p.user_id === userId || p.user_id === resolvedUserId
+              );
+              return isOwner || hasPerm;
+            })
+            .map((c: any) => {
+              const userPerm = c.calendar_permissions?.find(
+                (p: any) => p.user_id === userId || p.user_id === resolvedUserId
+              );
+              const isOwner = c.owner_id === userId || c.owner_id === resolvedUserId;
+              const role: UserRole = isOwner ? 'admin' : (userPerm?.role || 'viewer');
+              return {
+                id: c.id,
+                name: c.name,
+                description: c.description || '',
+                color_theme: c.color_theme || 'blue',
+                owner_id: c.owner_id,
+                created_at: c.created_at,
+                updated_at: c.updated_at,
+                role,
+              };
+            });
+          return userCalendars;
         }
       } catch (err) {
         console.warn('Fallback to local calendars', err);
       }
     }
 
+    const cleanUserId = sanitizeUserId(userId);
     const store = this.getLocalStore();
     return store.calendars
       .filter((cal) => {
-        if (cal.owner_id === userId) return true;
-        return store.permissions.some((p) => p.calendar_id === cal.id && p.user_id === userId);
+        if (cal.owner_id === userId || cal.owner_id === cleanUserId) return true;
+        return store.permissions.some(
+          (p) => p.calendar_id === cal.id && (p.user_id === userId || p.user_id === cleanUserId)
+        );
       })
       .map((cal) => {
-        const perm = store.permissions.find((p) => p.calendar_id === cal.id && p.user_id === userId);
-        const role: UserRole = cal.owner_id === userId ? 'admin' : (perm?.role || 'viewer');
+        const perm = store.permissions.find(
+          (p) => p.calendar_id === cal.id && (p.user_id === userId || p.user_id === cleanUserId)
+        );
+        const role: UserRole = (cal.owner_id === userId || cal.owner_id === cleanUserId) ? 'admin' : (perm?.role || 'viewer');
         return {
           ...cal,
           role,
@@ -870,14 +1055,17 @@ class PlanifikaDataService {
     userId: string,
     name: string,
     description: string,
-    colorTheme: 'blue' | 'emerald' | 'indigo' | 'violet' | 'amber'
+    colorTheme: 'blue' | 'emerald' | 'indigo' | 'violet' | 'amber',
+    userEmail?: string
   ): Promise<Calendar> {
+    const resolvedOwnerId = await this.resolveSupabaseUserId(userId, userEmail);
+
     const newCalendar: Calendar = {
-      id: `cal-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `cal-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
       name,
       description,
       color_theme: colorTheme,
-      owner_id: userId,
+      owner_id: resolvedOwnerId,
       created_at: new Date().toISOString(),
       role: 'admin',
     };
@@ -890,16 +1078,41 @@ class PlanifikaDataService {
             name,
             description,
             color_theme: colorTheme,
-            owner_id: userId,
+            owner_id: resolvedOwnerId,
           })
           .select()
           .single();
 
-        if (!error && data) {
-          return { ...data, role: 'admin' };
+        if (error) {
+          console.error('Error al insertar calendario en Supabase:', error);
+          throw new Error(error.message || 'Error al guardar el calendario en Supabase');
         }
-      } catch (err) {
-        console.warn('Error inserting calendar to supabase, fallback to local', err);
+
+        if (data) {
+          // Asegurar permiso de admin explícito para el creador
+          await this.supabase
+            .from('calendar_permissions')
+            .upsert({
+              calendar_id: data.id,
+              user_id: resolvedOwnerId,
+              role: 'admin',
+              granted_by: resolvedOwnerId,
+            }, { onConflict: 'calendar_id, user_id' });
+
+          return {
+            id: data.id,
+            name: data.name,
+            description: data.description || '',
+            color_theme: data.color_theme || colorTheme,
+            owner_id: data.owner_id,
+            created_at: data.created_at,
+            updated_at: data.updated_at,
+            role: 'admin',
+          };
+        }
+      } catch (err: any) {
+        console.warn('Error inserting calendar to supabase:', err);
+        throw err;
       }
     }
 
@@ -907,11 +1120,11 @@ class PlanifikaDataService {
     store.calendars.unshift(newCalendar);
     // Add owner permission as admin
     store.permissions.push({
-      id: `perm-${Date.now()}`,
+      id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `perm-${Date.now()}`,
       calendar_id: newCalendar.id,
-      user_id: userId,
+      user_id: resolvedOwnerId,
       role: 'admin',
-      granted_by: userId,
+      granted_by: resolvedOwnerId,
       created_at: new Date().toISOString(),
     });
     this.saveLocalStore(store);
@@ -920,6 +1133,26 @@ class PlanifikaDataService {
   }
 
   public async updateCalendar(calendarId: string, updates: Partial<Calendar>): Promise<Calendar> {
+    if (this.supabase && this.isLiveConnected) {
+      try {
+        const { data, error } = await this.supabase
+          .from('calendars')
+          .update(updates)
+          .eq('id', calendarId)
+          .select()
+          .single();
+
+        if (!error && data) {
+          return {
+            ...data,
+            role: 'admin',
+          };
+        }
+      } catch (err) {
+        console.warn('Error updating calendar in Supabase:', err);
+      }
+    }
+
     const store = this.getLocalStore();
     const idx = store.calendars.findIndex((c) => c.id === calendarId);
     if (idx !== -1) {
@@ -931,6 +1164,13 @@ class PlanifikaDataService {
   }
 
   public async deleteCalendar(calendarId: string): Promise<void> {
+    if (this.supabase && this.isLiveConnected) {
+      try {
+        await this.supabase.from('calendars').delete().eq('id', calendarId);
+      } catch (err) {
+        console.warn('Error deleting calendar in Supabase:', err);
+      }
+    }
     const store = this.getLocalStore();
     store.calendars = store.calendars.filter((c) => c.id !== calendarId);
     store.permissions = store.permissions.filter((p) => p.calendar_id !== calendarId);
@@ -940,6 +1180,35 @@ class PlanifikaDataService {
 
   // --- PERMISSIONS ---
   public async getCalendarPermissions(calendarId: string): Promise<CalendarPermission[]> {
+    if (this.supabase && this.isLiveConnected) {
+      try {
+        const { data, error } = await this.supabase
+          .from('calendar_permissions')
+          .select('*, user:users(id, email, full_name, avatar_url, role)')
+          .eq('calendar_id', calendarId);
+
+        if (!error && data) {
+          return data.map((p: any) => ({
+            id: p.id,
+            calendar_id: p.calendar_id,
+            user_id: p.user_id,
+            role: p.role as UserRole,
+            granted_by: p.granted_by,
+            created_at: p.created_at,
+            user_profile: p.user ? {
+              id: p.user.id,
+              email: p.user.email,
+              full_name: p.user.full_name,
+              avatar_url: p.user.avatar_url,
+              system_role: p.user.role === 'admin' ? 'admin' : 'user',
+            } : undefined,
+          }));
+        }
+      } catch (err) {
+        console.warn('Fallback to local permissions', err);
+      }
+    }
+
     const store = this.getLocalStore();
     const perms = store.permissions.filter((p) => p.calendar_id === calendarId);
     return perms.map((p) => ({
@@ -954,9 +1223,47 @@ class PlanifikaDataService {
     role: UserRole,
     grantedBy: string
   ): Promise<CalendarPermission> {
+    const resolvedUserId = await this.resolveSupabaseUserId(userId);
+    const resolvedGrantedBy = await this.resolveSupabaseUserId(grantedBy);
+
+    if (this.supabase && this.isLiveConnected) {
+      try {
+        const { data, error } = await this.supabase
+          .from('calendar_permissions')
+          .upsert({
+            calendar_id: calendarId,
+            user_id: resolvedUserId,
+            role,
+            granted_by: resolvedGrantedBy,
+          }, { onConflict: 'calendar_id, user_id' })
+          .select('*, user:users(id, email, full_name, avatar_url, role)')
+          .single();
+
+        if (!error && data) {
+          return {
+            id: data.id,
+            calendar_id: data.calendar_id,
+            user_id: data.user_id,
+            role: data.role as UserRole,
+            granted_by: data.granted_by,
+            created_at: data.created_at,
+            user_profile: data.user ? {
+              id: data.user.id,
+              email: data.user.email,
+              full_name: data.user.full_name,
+              avatar_url: data.user.avatar_url,
+              system_role: data.user.role === 'admin' ? 'admin' : 'user',
+            } : undefined,
+          };
+        }
+      } catch (err) {
+        console.warn('Error updating permission in Supabase:', err);
+      }
+    }
+
     const store = this.getLocalStore();
     const existingIdx = store.permissions.findIndex(
-      (p) => p.calendar_id === calendarId && p.user_id === userId
+      (p) => p.calendar_id === calendarId && (p.user_id === userId || p.user_id === resolvedUserId)
     );
 
     if (existingIdx !== -1) {
@@ -964,30 +1271,42 @@ class PlanifikaDataService {
       this.saveLocalStore(store);
       return {
         ...store.permissions[existingIdx],
-        user_profile: store.profiles.find((p) => p.id === userId),
+        user_profile: store.profiles.find((p) => p.id === userId || p.id === resolvedUserId),
       };
     } else {
       const newPerm: CalendarPermission = {
-        id: `perm-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `perm-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
         calendar_id: calendarId,
-        user_id: userId,
+        user_id: resolvedUserId,
         role,
-        granted_by: grantedBy,
+        granted_by: resolvedGrantedBy,
         created_at: new Date().toISOString(),
       };
       store.permissions.push(newPerm);
       this.saveLocalStore(store);
       return {
         ...newPerm,
-        user_profile: store.profiles.find((p) => p.id === userId),
+        user_profile: store.profiles.find((p) => p.id === userId || p.id === resolvedUserId),
       };
     }
   }
 
   public async removeCalendarPermission(calendarId: string, userId: string): Promise<void> {
+    const resolvedUserId = await this.resolveSupabaseUserId(userId);
+    if (this.supabase && this.isLiveConnected) {
+      try {
+        await this.supabase
+          .from('calendar_permissions')
+          .delete()
+          .eq('calendar_id', calendarId)
+          .eq('user_id', resolvedUserId);
+      } catch (err) {
+        console.warn('Error removing permission from Supabase:', err);
+      }
+    }
     const store = this.getLocalStore();
     store.permissions = store.permissions.filter(
-      (p) => !(p.calendar_id === calendarId && p.user_id === userId)
+      (p) => !(p.calendar_id === calendarId && (p.user_id === userId || p.user_id === resolvedUserId))
     );
     this.saveLocalStore(store);
   }

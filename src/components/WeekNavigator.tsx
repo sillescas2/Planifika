@@ -43,17 +43,23 @@ export const WeekNavigator: React.FC = () => {
           
           {/* Left: Active Calendar Name & Quick Switcher */}
           <div className="flex items-center gap-2">
-            <select
-              value={activeCalendar?.id || ''}
-              onChange={(e) => setActiveCalendarId(e.target.value)}
-              className="text-sm sm:text-base font-bold text-slate-900 bg-transparent border-0 py-1 pl-0 pr-6 focus:ring-0 cursor-pointer hover:text-slate-700 transition-colors"
-            >
-              {calendars.map((cal) => (
-                <option key={cal.id} value={cal.id}>
-                  {cal.name}
-                </option>
-              ))}
-            </select>
+            {calendars.length > 0 ? (
+              <select
+                value={activeCalendar?.id || ''}
+                onChange={(e) => setActiveCalendarId(e.target.value)}
+                className="text-sm sm:text-base font-bold text-slate-900 bg-transparent border-0 py-1 pl-0 pr-6 focus:ring-0 cursor-pointer hover:text-slate-700 transition-colors"
+              >
+                {calendars.map((cal) => (
+                  <option key={cal.id} value={cal.id}>
+                    {cal.name}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <span className="text-sm sm:text-base font-semibold text-slate-400 italic">
+                Sin calendarios disponibles
+              </span>
+            )}
           </div>
 
           {/* Right: Week Controls & Navigation */}

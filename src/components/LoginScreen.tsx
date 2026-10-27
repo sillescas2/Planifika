@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { DEMO_PROFILES, planifikaService } from '../lib/supabase';
+import { DEMO_PROFILES, DEMO_UUIDS, planifikaService } from '../lib/supabase';
 import {
   Lock,
   Mail,
@@ -162,7 +162,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onSuccess }) => {
             <div className="space-y-1.5 pt-1">
               <button
                 type="button"
-                onClick={() => handleQuickLogin('usr-admin-carlos')}
+                onClick={() => handleQuickLogin(DEMO_UUIDS.CARLOS)}
                 className="w-full flex items-center justify-between p-2 rounded-lg bg-white border border-amber-200 hover:border-amber-400 hover:bg-amber-50/50 transition-all text-left text-xs cursor-pointer shadow-2xs"
               >
                 <div className="flex items-center gap-2">
@@ -181,7 +181,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onSuccess }) => {
 
               <button
                 type="button"
-                onClick={() => handleQuickLogin('usr-editor-elena')}
+                onClick={() => handleQuickLogin(DEMO_UUIDS.ELENA)}
                 className="w-full flex items-center justify-between p-2 rounded-lg bg-white border border-sky-200 hover:border-sky-400 hover:bg-sky-50/50 transition-all text-left text-xs cursor-pointer shadow-2xs"
               >
                 <div className="flex items-center gap-2">
@@ -200,7 +200,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onSuccess }) => {
 
               <button
                 type="button"
-                onClick={() => handleQuickLogin('usr-viewer-david')}
+                onClick={() => handleQuickLogin(DEMO_UUIDS.DAVID)}
                 className="w-full flex items-center justify-between p-2 rounded-lg bg-white border border-slate-200 hover:border-slate-400 hover:bg-slate-50 transition-all text-left text-xs cursor-pointer shadow-2xs"
               >
                 <div className="flex items-center gap-2">

@@ -15,6 +15,10 @@ export const WeeklyBoard: React.FC = () => {
   const {
     tasks,
     selectedWeekStart,
+    activeCalendar,
+    calendars,
+    isAdminUser,
+    setActiveTab,
     canEdit,
     isAdmin,
     openCreateTaskModal,
@@ -101,6 +105,45 @@ export const WeeklyBoard: React.FC = () => {
     sabado: [],
     domingo: [],
   });
+
+  if (!activeCalendar || calendars.length === 0) {
+    return (
+      <div className="max-w-4xl mx-auto px-4 py-16 text-center">
+        <div className="w-16 h-16 rounded-2xl bg-slate-100 text-slate-700 mx-auto flex items-center justify-center mb-5 shadow-xs">
+          <CalendarIcon className="w-8 h-8 text-slate-500" />
+        </div>
+        {isAdminUser ? (
+          <>
+            <h2 className="text-xl font-bold text-slate-900 mb-2">
+              No tienes ningún calendario activo
+            </h2>
+            <p className="text-sm text-slate-500 max-w-lg mx-auto leading-relaxed mb-6">
+              Como administrador, puedes crear el primer calendario para comenzar a planificar la semana de tu equipo.
+            </p>
+            <button
+              onClick={() => setActiveTab('calendars')}
+              className="inline-flex items-center gap-2 px-5 py-2.5 text-xs font-semibold text-white bg-slate-900 rounded-xl hover:bg-slate-800 transition-colors shadow-xs active:scale-95"
+            >
+              <Plus className="w-4 h-4 stroke-[2.5]" />
+              <span>Crear o seleccionar calendario</span>
+            </button>
+          </>
+        ) : (
+          <>
+            <h2 className="text-xl font-bold text-slate-900 mb-2">
+              No tienes calendarios asignados
+            </h2>
+            <p className="text-sm text-slate-500 max-w-lg mx-auto leading-relaxed mb-4">
+              Tu cuenta ha sido creada exitosamente, pero aún no perteneces a ningún calendario de trabajo.
+            </p>
+            <div className="inline-flex items-center gap-2 px-4 py-2 text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-xl max-w-md">
+              <span>Un usuario con rol Administrador debe agregarte a su calendario para que puedas ver y colaborar en las tareas semanales.</span>
+            </div>
+          </>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="w-full">

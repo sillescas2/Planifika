@@ -317,3 +317,30 @@ VALUES
   ('b0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000002', 'editor', 'a0000000-0000-0000-0000-000000000001'),
   ('b0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000003', 'viewer', 'a0000000-0000-0000-0000-000000000001')
 ON CONFLICT (calendar_id, user_id) DO NOTHING;
+
+
+-- ==============================================================================
+-- 11. PERMISOS Y POLÍTICAS DE ACCESO PARA CLIENTE (ANON / AUTHENTICATED)
+-- Garantiza que las operaciones desde la interfaz web no sean bloqueadas por RLS
+-- ==============================================================================
+GRANT USAGE ON SCHEMA public TO anon, authenticated;
+GRANT ALL ON ALL TABLES IN SCHEMA public TO anon, authenticated;
+GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated;
+GRANT ALL ON ALL ROUTINES IN SCHEMA public TO anon, authenticated;
+
+ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.calendars ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.calendar_permissions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.tasks ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Permitir todo anon y authenticated en users" ON public.users;
+CREATE POLICY "Permitir todo anon y authenticated en users" ON public.users FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Permitir todo anon y authenticated en calendars" ON public.calendars;
+CREATE POLICY "Permitir todo anon y authenticated en calendars" ON public.calendars FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Permitir todo anon y authenticated en calendar_permissions" ON public.calendar_permissions;
+CREATE POLICY "Permitir todo anon y authenticated en calendar_permissions" ON public.calendar_permissions FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Permitir todo anon y authenticated en tasks" ON public.tasks;
+CREATE POLICY "Permitir todo anon y authenticated en tasks" ON public.tasks FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);

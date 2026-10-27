@@ -150,12 +150,36 @@ CREATE TRIGGER on_calendar_created
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_calendar();
 
 -- 8. SEED DE DATOS: USUARIOS DEMO (password: password123)
-INSERT INTO public.users (email, password_hash, full_name, role)
+INSERT INTO public.users (id, email, password_hash, full_name, role)
 VALUES
-  ('carlos.admin@planifika.app', crypt('password123', gen_salt('bf', 10)), 'Carlos Martínez', 'admin'),
-  ('elena.editor@planifika.app', crypt('password123', gen_salt('bf', 10)), 'Elena Ramos', 'user'),
-  ('david.viewer@planifika.app', crypt('password123', gen_salt('bf', 10)), 'David Soto', 'user')
-ON CONFLICT (email) DO NOTHING;`;
+  ('a0000000-0000-0000-0000-000000000001', 'carlos.admin@planifika.app', crypt('password123', gen_salt('bf', 10)), 'Carlos Martínez (Administrador)', 'admin'),
+  ('a0000000-0000-0000-0000-000000000002', 'elena.editor@planifika.app', crypt('password123', gen_salt('bf', 10)), 'Elena Ramos (Editora)', 'user'),
+  ('a0000000-0000-0000-0000-000000000003', 'david.viewer@planifika.app', crypt('password123', gen_salt('bf', 10)), 'David Soto (Espectador)', 'user')
+ON CONFLICT (email) DO UPDATE
+SET id = EXCLUDED.id, role = EXCLUDED.role;
+
+-- 9. PERMISOS Y POLÍTICAS DE ACCESO PARA CLIENTE (ANON / AUTHENTICATED)
+GRANT USAGE ON SCHEMA public TO anon, authenticated;
+GRANT ALL ON ALL TABLES IN SCHEMA public TO anon, authenticated;
+GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated;
+GRANT ALL ON ALL ROUTINES IN SCHEMA public TO anon, authenticated;
+
+ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.calendars ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.calendar_permissions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.tasks ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "Permitir todo anon y authenticated en users" ON public.users;
+CREATE POLICY "Permitir todo anon y authenticated en users" ON public.users FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Permitir todo anon y authenticated en calendars" ON public.calendars;
+CREATE POLICY "Permitir todo anon y authenticated en calendars" ON public.calendars FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Permitir todo anon y authenticated en calendar_permissions" ON public.calendar_permissions;
+CREATE POLICY "Permitir todo anon y authenticated en calendar_permissions" ON public.calendar_permissions FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Permitir todo anon y authenticated en tasks" ON public.tasks;
+CREATE POLICY "Permitir todo anon y authenticated en tasks" ON public.tasks FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);`;
 
 export const SettingsView: React.FC = () => {
   const {
@@ -218,7 +242,7 @@ export const SettingsView: React.FC = () => {
     if (!newUserName.trim() || !newUserEmail.trim()) return;
 
     await addNewProfile({
-      id: `usr-${Date.now()}`,
+      id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'a0000000-0000-0000-0000-' + Date.now().toString().slice(-12).padStart(12, '0'),
       email: newUserEmail.trim(),
       full_name: newUserName.trim(),
       avatar_url: `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(newUserName.trim())}`,

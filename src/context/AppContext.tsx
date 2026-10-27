@@ -16,7 +16,7 @@ import {
   getWeekInfo,
   parseISODate,
 } from '../utils/dateUtils';
-import { DEMO_PROFILES, planifikaService } from '../lib/supabase';
+import { DEMO_PROFILES, LEGACY_USER_ID_MAP, planifikaService } from '../lib/supabase';
 
 interface ToastData {
   id: number;
@@ -133,7 +133,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (saved === 'logged_out' || saved === '') {
       return null;
     }
-    const matched = DEMO_PROFILES.find((p) => p.id === saved);
+    const resolvedSaved = (saved && LEGACY_USER_ID_MAP[saved]) ? LEGACY_USER_ID_MAP[saved] : (saved || '');
+    if (saved && resolvedSaved && resolvedSaved !== saved) {
+      try {
+        localStorage.setItem('planifika_active_user_id', resolvedSaved);
+      } catch (e) {
+        // ignore
+      }
+    }
+    const matched = DEMO_PROFILES.find((p) => p.id === resolvedSaved);
     return matched || DEMO_PROFILES[0]; // Default: Carlos (Admin)
   });
   const [allProfiles, setAllProfiles] = useState<UserProfile[]>(DEMO_PROFILES);
@@ -205,7 +213,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Switch demo user
   const switchDemoUser = useCallback((userId: string) => {
-    const user = allProfiles.find((p) => p.id === userId) || DEMO_PROFILES.find((p) => p.id === userId);
+    const cleanId = LEGACY_USER_ID_MAP[userId] || userId;
+    const user = allProfiles.find((p) => p.id === cleanId || p.id === userId) || DEMO_PROFILES.find((p) => p.id === cleanId || p.id === userId);
     if (user) {
       setCurrentUser(user);
       localStorage.setItem('planifika_active_user_id', user.id);
@@ -241,7 +250,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   // Load calendars for current user
   const loadCalendars = useCallback(async () => {
     if (!currentUser) return;
-    const cals = await planifikaService.getCalendarsForUser(currentUser.id);
+    const cals = await planifikaService.getCalendarsForUser(currentUser.id, currentUser.email);
     setCalendars(cals);
 
     // If no active calendar or current active not in list, select first
@@ -262,13 +271,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Current Role on Active Calendar
   const currentRole: UserRole = useMemo(() => {
-    if (!activeCalendar || !currentUser) return 'viewer';
-    return activeCalendar.role || (activeCalendar.owner_id === currentUser.id ? 'admin' : 'viewer');
+    if (!currentUser) return 'viewer';
+    if (!activeCalendar) {
+      return currentUser.system_role === 'admin' ? 'admin' : 'viewer';
+    }
+    // Si es propietario o administrador del sistema, siempre tiene rol admin
+    if (activeCalendar.owner_id === currentUser.id || currentUser.system_role === 'admin') {
+      return 'admin';
+    }
+    return activeCalendar.role || 'viewer';
   }, [activeCalendar, currentUser]);
 
   const isAdmin = currentRole === 'admin';
-  const isAdminUser = isAdmin || currentUser?.system_role === 'admin';
-  const canEdit = currentRole === 'admin' || currentRole === 'editor';
+  const isAdminUser = currentUser?.system_role === 'admin';
+  const canEdit = !!activeCalendar && (isAdmin || currentRole === 'editor');
 
   // Security barrier: non-admin users cannot access the settings tab
   useEffect(() => {
@@ -552,12 +568,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     description: string,
     colorTheme: 'blue' | 'emerald' | 'indigo' | 'violet' | 'amber'
   ) => {
-    if (!currentUser) throw new Error('Usuario no identificado');
-    const newCal = await planifikaService.createCalendar(currentUser.id, name, description, colorTheme);
-    await loadCalendars();
-    setActiveCalendarId(newCal.id);
-    showToast(`Calendario "${newCal.name}" creado. Eres el administrador.`, 'success');
-    return newCal;
+    if (!currentUser) throw new Error('Usuario no autenticado');
+    if (currentUser.system_role !== 'admin') {
+      showToast('Permiso denegado: Solo los usuarios con rol Administrador pueden crear calendarios.', 'error');
+      throw new Error('Solo los administradores pueden crear calendarios');
+    }
+    try {
+      const newCal = await planifikaService.createCalendar(currentUser.id, name, description, colorTheme, currentUser.email);
+      await loadCalendars();
+      setActiveCalendarId(newCal.id);
+      showToast(`Calendario "${newCal.name}" creado con éxito. Eres el administrador.`, 'success');
+      return newCal;
+    } catch (err: any) {
+      showToast(err?.message || 'Error al crear el calendario', 'error');
+      throw err;
+    }
   }, [currentUser, loadCalendars, showToast]);
 
   const updateCalendar = useCallback(async (id: string, updates: Partial<Calendar>) => {

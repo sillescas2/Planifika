@@ -38,6 +38,22 @@ export const Navbar: React.FC = () => {
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
 
   const roleBadge = () => {
+    if (!activeCalendar) {
+      if (isAdminUser) {
+        return (
+          <span className="flex items-center gap-1 text-[11px] font-medium text-amber-700 bg-amber-50 border border-amber-200/80 rounded-md px-2 py-0.5 whitespace-nowrap">
+            <Shield className="w-3 h-3 text-amber-600" />
+            <span>Admin Sistema</span>
+          </span>
+        );
+      }
+      return (
+        <span className="flex items-center gap-1 text-[11px] font-medium text-slate-600 bg-slate-100 border border-slate-200 rounded-md px-2 py-0.5 whitespace-nowrap">
+          <Eye className="w-3 h-3 text-slate-500" />
+          <span>Usuario</span>
+        </span>
+      );
+    }
     if (currentRole === 'admin') {
       return (
         <span className="flex items-center gap-1 text-[11px] font-medium text-amber-700 bg-amber-50 border border-amber-200/80 rounded-md px-2 py-0.5 whitespace-nowrap">
@@ -145,8 +161,8 @@ export const Navbar: React.FC = () => {
 
           {/* Zone 3: Actions & Profile */}
           <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-            {/* Quick permissions modal button if Admin */}
-            {isAdmin && (
+            {/* Quick permissions modal button if Admin and active calendar */}
+            {isAdmin && activeCalendar && (
               <button
                 onClick={openPermissionsModal}
                 title="Gestionar permisos del calendario"
@@ -167,6 +183,8 @@ export const Navbar: React.FC = () => {
                 <span className="hidden sm:inline">Nueva Tarea</span>
                 <span className="sm:hidden">Tarea</span>
               </button>
+            ) : !activeCalendar ? (
+              <span className="text-xs text-slate-400 italic px-2">Sin calendario</span>
             ) : (
               <span className="text-xs text-slate-400 italic px-2">Solo lectura</span>
             )}
@@ -208,7 +226,9 @@ export const Navbar: React.FC = () => {
                     <p className="text-xs font-semibold text-slate-900">{currentUser?.full_name}</p>
                     <p className="text-[11px] text-slate-500 truncate">{currentUser?.email}</p>
                     <div className="mt-1.5 flex items-center gap-1.5">
-                      <span className="text-[11px] text-slate-500">Rol en este calendario:</span>
+                      <span className="text-[11px] text-slate-500">
+                        {activeCalendar ? 'Rol en este calendario:' : 'Rol en el sistema:'}
+                      </span>
                       {roleBadge()}
                     </div>
                   </div>
