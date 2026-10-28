@@ -149,7 +149,33 @@ CREATE TRIGGER on_calendar_created
   AFTER INSERT ON public.calendars
   FOR EACH ROW EXECUTE FUNCTION public.handle_new_calendar();
 
--- 8. SEED DE DATOS: USUARIOS DEMO (password: password123)
+-- 8. CREADOR DE CALENDARIOS SEGURO (Bypasses RLS)
+CREATE OR REPLACE FUNCTION public.create_app_calendar(
+  p_name TEXT,
+  p_description TEXT DEFAULT '',
+  p_color_theme TEXT DEFAULT 'blue',
+  p_owner_id UUID DEFAULT NULL
+) RETURNS JSONB AS $$
+DECLARE
+  v_cal RECORD;
+BEGIN
+  IF p_owner_id IS NULL THEN
+    RAISE EXCEPTION 'El owner_id es obligatorio para crear un calendario';
+  END IF;
+
+  INSERT INTO public.calendars (name, description, color_theme, owner_id)
+  VALUES (p_name, COALESCE(p_description, ''), COALESCE(p_color_theme, 'blue'), p_owner_id)
+  RETURNING * INTO v_cal;
+
+  INSERT INTO public.calendar_permissions (calendar_id, user_id, role, granted_by)
+  VALUES (v_cal.id, p_owner_id, 'admin', p_owner_id)
+  ON CONFLICT (calendar_id, user_id) DO UPDATE SET role = 'admin';
+
+  RETURN to_jsonb(v_cal);
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- 9. SEED DE DATOS: USUARIOS DEMO (password: password123)
 INSERT INTO public.users (id, email, password_hash, full_name, role)
 VALUES
   ('a0000000-0000-0000-0000-000000000001', 'carlos.admin@planifika.app', crypt('password123', gen_salt('bf', 10)), 'Carlos Martínez (Administrador)', 'admin'),
@@ -158,28 +184,31 @@ VALUES
 ON CONFLICT (email) DO UPDATE
 SET id = EXCLUDED.id, role = EXCLUDED.role;
 
--- 9. PERMISOS Y POLÍTICAS DE ACCESO PARA CLIENTE (ANON / AUTHENTICATED)
-GRANT USAGE ON SCHEMA public TO anon, authenticated;
-GRANT ALL ON ALL TABLES IN SCHEMA public TO anon, authenticated;
-GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated;
-GRANT ALL ON ALL ROUTINES IN SCHEMA public TO anon, authenticated;
+-- 10. PERMISOS Y CONTROL DE ACCESO (ANON / AUTHENTICATED / PUBLIC)
+-- En Planifika la autenticación se gestiona íntegramente en la tabla public.users (sin GoTrue).
+-- Por tanto, la conexión frontend opera con la clave pública 'anon'. Para evitar errores RLS
+-- se desactiva RLS en las tablas y se asignan permisos completos:
+GRANT USAGE ON SCHEMA public TO anon, authenticated, public;
+GRANT ALL ON ALL TABLES IN SCHEMA public TO anon, authenticated, public;
+GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated, public;
+GRANT ALL ON ALL ROUTINES IN SCHEMA public TO anon, authenticated, public;
 
-ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.calendars ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.calendar_permissions ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.tasks ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.calendars DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.calendar_permissions DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.tasks DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.users DISABLE ROW LEVEL SECURITY;
 
-DROP POLICY IF EXISTS "Permitir todo anon y authenticated en users" ON public.users;
-CREATE POLICY "Permitir todo anon y authenticated en users" ON public.users FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "Acceso universal public users" ON public.users;
+CREATE POLICY "Acceso universal public users" ON public.users FOR ALL TO public USING (true) WITH CHECK (true);
 
-DROP POLICY IF EXISTS "Permitir todo anon y authenticated en calendars" ON public.calendars;
-CREATE POLICY "Permitir todo anon y authenticated en calendars" ON public.calendars FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "Acceso universal public calendars" ON public.calendars;
+CREATE POLICY "Acceso universal public calendars" ON public.calendars FOR ALL TO public USING (true) WITH CHECK (true);
 
-DROP POLICY IF EXISTS "Permitir todo anon y authenticated en calendar_permissions" ON public.calendar_permissions;
-CREATE POLICY "Permitir todo anon y authenticated en calendar_permissions" ON public.calendar_permissions FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "Acceso universal public calendar_permissions" ON public.calendar_permissions;
+CREATE POLICY "Acceso universal public calendar_permissions" ON public.calendar_permissions FOR ALL TO public USING (true) WITH CHECK (true);
 
-DROP POLICY IF EXISTS "Permitir todo anon y authenticated en tasks" ON public.tasks;
-CREATE POLICY "Permitir todo anon y authenticated en tasks" ON public.tasks FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);`;
+DROP POLICY IF EXISTS "Acceso universal public tasks" ON public.tasks;
+CREATE POLICY "Acceso universal public tasks" ON public.tasks FOR ALL TO public USING (true) WITH CHECK (true);`;
 
 export const SettingsView: React.FC = () => {
   const {
@@ -226,6 +255,46 @@ export const SettingsView: React.FC = () => {
   const [newUserName, setNewUserName] = useState('');
   const [newUserEmail, setNewUserEmail] = useState('');
   const [copiedSql, setCopiedSql] = useState(false);
+  const [copiedRlsFix, setCopiedRlsFix] = useState(false);
+
+  const RLS_FIX_SQL = `-- 1. Desactivar RLS en las 4 tablas (Soluciona "new row violates row-level security policy"):
+ALTER TABLE public.calendars DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.calendar_permissions DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.tasks DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.users DISABLE ROW LEVEL SECURITY;
+
+-- 2. Asegurar función segura para crear calendarios (bypasses RLS):
+CREATE OR REPLACE FUNCTION public.create_app_calendar(
+  p_name TEXT,
+  p_description TEXT DEFAULT '',
+  p_color_theme TEXT DEFAULT 'blue',
+  p_owner_id UUID DEFAULT NULL
+) RETURNS JSONB AS $$
+DECLARE
+  v_cal RECORD;
+BEGIN
+  IF p_owner_id IS NULL THEN
+    RAISE EXCEPTION 'El owner_id es obligatorio para crear un calendario';
+  END IF;
+
+  INSERT INTO public.calendars (name, description, color_theme, owner_id)
+  VALUES (p_name, COALESCE(p_description, ''), COALESCE(p_color_theme, 'blue'), p_owner_id)
+  RETURNING * INTO v_cal;
+
+  INSERT INTO public.calendar_permissions (calendar_id, user_id, role, granted_by)
+  VALUES (v_cal.id, p_owner_id, 'admin', p_owner_id)
+  ON CONFLICT (calendar_id, user_id) DO UPDATE SET role = 'admin';
+
+  RETURN to_jsonb(v_cal);
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;`;
+
+  const copyRlsFix = () => {
+    navigator.clipboard.writeText(RLS_FIX_SQL);
+    setCopiedRlsFix(true);
+    showToast('Comando de solución RLS copiado al portapapeles', 'success');
+    setTimeout(() => setCopiedRlsFix(false), 2000);
+  };
 
   const handleSaveCredentials = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -485,12 +554,43 @@ export const SettingsView: React.FC = () => {
       {/* Tab 3: SQL Script & RLS */}
       {activeTab === 'sql' && (
         <div className="mt-6 space-y-6 max-w-4xl">
+          {/* Card Solución RLS */}
+          <div className="p-5 bg-amber-50/80 border border-amber-200 rounded-2xl shadow-xs">
+            <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+              <div className="space-y-1">
+                <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-[11px] font-bold bg-amber-200/70 text-amber-900 uppercase tracking-wide">
+                  Solución para error: &quot;new row violates row-level security policy&quot;
+                </span>
+                <h4 className="text-sm font-bold text-slate-900 mt-2">
+                  ¿Error RLS al crear un calendario o tareas?
+                </h4>
+                <p className="text-xs text-slate-600 leading-relaxed max-w-2xl">
+                  Al gestionar los usuarios directamente en la tabla <code className="bg-amber-100 text-amber-900 px-1 py-0.5 rounded">public.users</code> (sin Supabase Auth / GoTrue), las solicitudes cliente usan la anon key. Para que Supabase permita crear calendarios y tareas sin bloqueo de RLS, ejecuta esta solución en el SQL Editor de tu proyecto Supabase:
+                </p>
+              </div>
+
+              <button
+                onClick={copyRlsFix}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-bold text-white bg-amber-700 hover:bg-amber-800 rounded-xl transition-colors shrink-0 shadow-xs cursor-pointer"
+              >
+                {copiedRlsFix ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                <span>{copiedRlsFix ? '¡Copiado!' : 'Copiar Solución RLS'}</span>
+              </button>
+            </div>
+
+            <div className="mt-3 bg-slate-900 p-3 rounded-xl border border-slate-800">
+              <pre className="text-[11px] font-mono text-amber-300 overflow-x-auto leading-relaxed">
+                <code>{RLS_FIX_SQL}</code>
+              </pre>
+            </div>
+          </div>
+
           <div className="p-5 bg-white border border-slate-200 rounded-2xl shadow-xs">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 mb-4 border-b border-slate-100">
               <div>
                 <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
                   <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                  <span>Script de Inicialización y Políticas RLS en Supabase</span>
+                  <span>Script de Inicialización y Esquema Completo en Supabase</span>
                 </h3>
                 <p className="text-xs text-slate-500 mt-0.5">
                   Ejecuta este script en el SQL Editor de tu consola de Supabase para generar tablas, llaves foráneas y el trigger de seguridad.

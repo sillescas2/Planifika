@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { DEMO_PROFILES, DEMO_UUIDS, planifikaService } from '../lib/supabase';
 import {
@@ -21,8 +21,12 @@ interface LoginScreenProps {
 }
 
 export const LoginScreen: React.FC<LoginScreenProps> = ({ onSuccess }) => {
-  const { setCurrentUser, switchDemoUser, showToast, isLiveConnected } = useApp();
+  const { setCurrentUser, switchDemoUser, showToast, isLiveConnected, allProfiles, loadProfiles } = useApp();
   const [mode, setMode] = useState<'signin' | 'signup' | 'forgot'>('signin');
+
+  useEffect(() => {
+    loadProfiles();
+  }, [loadProfiles]);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -89,6 +93,7 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onSuccess }) => {
         );
 
         if (res.success && res.user) {
+          await loadProfiles();
           setCurrentUser(res.user);
           if (rememberMe) {
             localStorage.setItem('planifika_active_user_id', res.user.id);
@@ -159,63 +164,35 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onSuccess }) => {
               Entra directamente para comprobar los permisos de visualización, edición y restricciones de administración:
             </p>
 
-            <div className="space-y-1.5 pt-1">
-              <button
-                type="button"
-                onClick={() => handleQuickLogin(DEMO_UUIDS.CARLOS)}
-                className="w-full flex items-center justify-between p-2 rounded-lg bg-white border border-amber-200 hover:border-amber-400 hover:bg-amber-50/50 transition-all text-left text-xs cursor-pointer shadow-2xs"
-              >
-                <div className="flex items-center gap-2">
-                  <div className="w-6 h-6 rounded-full bg-amber-100 text-amber-800 flex items-center justify-center font-bold text-[10px]">
-                    <Shield className="w-3.5 h-3.5 text-amber-600" />
-                  </div>
-                  <div>
-                    <span className="font-bold text-slate-900">Carlos Martínez</span>
-                    <span className="text-[10px] text-slate-500 block">Administrador (Configuración y Completar)</span>
-                  </div>
-                </div>
-                <span className="text-[10px] font-semibold text-amber-800 bg-amber-100 px-1.5 py-0.5 rounded">
-                  Admin
-                </span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleQuickLogin(DEMO_UUIDS.ELENA)}
-                className="w-full flex items-center justify-between p-2 rounded-lg bg-white border border-sky-200 hover:border-sky-400 hover:bg-sky-50/50 transition-all text-left text-xs cursor-pointer shadow-2xs"
-              >
-                <div className="flex items-center gap-2">
-                  <div className="w-6 h-6 rounded-full bg-sky-100 text-sky-800 flex items-center justify-center font-bold text-[10px]">
-                    <Edit3 className="w-3.5 h-3.5 text-sky-600" />
-                  </div>
-                  <div>
-                    <span className="font-bold text-slate-900">Elena Ramos</span>
-                    <span className="text-[10px] text-slate-500 block">Editora (Sin acceso a configuración)</span>
-                  </div>
-                </div>
-                <span className="text-[10px] font-semibold text-sky-800 bg-sky-100 px-1.5 py-0.5 rounded">
-                  Editor
-                </span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => handleQuickLogin(DEMO_UUIDS.DAVID)}
-                className="w-full flex items-center justify-between p-2 rounded-lg bg-white border border-slate-200 hover:border-slate-400 hover:bg-slate-50 transition-all text-left text-xs cursor-pointer shadow-2xs"
-              >
-                <div className="flex items-center gap-2">
-                  <div className="w-6 h-6 rounded-full bg-slate-200 text-slate-700 flex items-center justify-center font-bold text-[10px]">
-                    <Eye className="w-3.5 h-3.5 text-slate-500" />
-                  </div>
-                  <div>
-                    <span className="font-bold text-slate-900">David Soto</span>
-                    <span className="text-[10px] text-slate-500 block">Espectador (Solo lectura de tareas)</span>
-                  </div>
-                </div>
-                <span className="text-[10px] font-semibold text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded">
-                  Lectura
-                </span>
-              </button>
+            <div className="space-y-1.5 pt-1 max-h-56 overflow-y-auto pr-0.5">
+              {allProfiles.map((p) => {
+                const isAdmin = p.system_role === 'admin';
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => handleQuickLogin(p.id)}
+                    className="w-full flex items-center justify-between p-2 rounded-lg bg-white border border-slate-200 hover:border-slate-400 hover:bg-slate-50 transition-all text-left text-xs cursor-pointer shadow-2xs"
+                  >
+                    <div className="flex items-center gap-2 truncate pr-2">
+                      <div className={`w-6 h-6 rounded-full flex items-center justify-center font-bold text-[10px] shrink-0 ${
+                        isAdmin ? 'bg-amber-100 text-amber-800' : 'bg-slate-200 text-slate-700'
+                      }`}>
+                        {isAdmin ? <Shield className="w-3.5 h-3.5 text-amber-600" /> : <Eye className="w-3.5 h-3.5 text-slate-500" />}
+                      </div>
+                      <div className="truncate">
+                        <span className="font-bold text-slate-900 block truncate">{p.full_name}</span>
+                        <span className="text-[10px] text-slate-500 block truncate">{p.email}</span>
+                      </div>
+                    </div>
+                    <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded shrink-0 ${
+                      isAdmin ? 'text-amber-800 bg-amber-100' : 'text-slate-600 bg-slate-100'
+                    }`}>
+                      {isAdmin ? 'Admin' : 'Usuario'}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
 
             <div className="p-2 bg-slate-100/80 rounded-lg text-[10px] text-slate-600 flex items-center justify-between">

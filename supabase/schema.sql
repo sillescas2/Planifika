@@ -319,28 +319,64 @@ VALUES
 ON CONFLICT (calendar_id, user_id) DO NOTHING;
 
 
--- ==============================================================================
--- 11. PERMISOS Y POLÍTICAS DE ACCESO PARA CLIENTE (ANON / AUTHENTICATED)
--- Garantiza que las operaciones desde la interfaz web no sean bloqueadas por RLS
--- ==============================================================================
-GRANT USAGE ON SCHEMA public TO anon, authenticated;
-GRANT ALL ON ALL TABLES IN SCHEMA public TO anon, authenticated;
-GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated;
-GRANT ALL ON ALL ROUTINES IN SCHEMA public TO anon, authenticated;
+-- Creador de calendarios con privilegios de sistema (SECURITY DEFINER para eludir restricciones RLS anónimas)
+CREATE OR REPLACE FUNCTION public.create_app_calendar(
+  p_name TEXT,
+  p_description TEXT DEFAULT '',
+  p_color_theme TEXT DEFAULT 'blue',
+  p_owner_id UUID DEFAULT NULL
+) RETURNS JSONB AS $$
+DECLARE
+  v_cal RECORD;
+BEGIN
+  IF p_owner_id IS NULL THEN
+    RAISE EXCEPTION 'El owner_id es obligatorio para crear un calendario';
+  END IF;
 
-ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.calendars ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.calendar_permissions ENABLE ROW LEVEL SECURITY;
-ALTER TABLE public.tasks ENABLE ROW LEVEL SECURITY;
+  INSERT INTO public.calendars (name, description, color_theme, owner_id)
+  VALUES (p_name, COALESCE(p_description, ''), COALESCE(p_color_theme, 'blue'), p_owner_id)
+  RETURNING * INTO v_cal;
 
+  -- Asignar rol de admin en permisos
+  INSERT INTO public.calendar_permissions (calendar_id, user_id, role, granted_by)
+  VALUES (v_cal.id, p_owner_id, 'admin', p_owner_id)
+  ON CONFLICT (calendar_id, user_id) DO UPDATE SET role = 'admin';
+
+  RETURN to_jsonb(v_cal);
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- ==============================================================================
+-- 11. PERMISOS Y CONTROL DE ACCESO (ANON / AUTHENTICATED / PUBLIC)
+-- En Planifika la autenticación se gestiona íntegramente en la tabla public.users
+-- mediante bcrypt/pgcrypto (sin GoTrue). Por tanto, la conexión frontend opera
+-- con la clave 'anon'. Para evitar errores "new row violates row-level security policy",
+-- se desactiva RLS en las tablas y se otorgan permisos completos a anon y authenticated.
+-- ==============================================================================
+GRANT USAGE ON SCHEMA public TO anon, authenticated, public;
+GRANT ALL ON ALL TABLES IN SCHEMA public TO anon, authenticated, public;
+GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO anon, authenticated, public;
+GRANT ALL ON ALL ROUTINES IN SCHEMA public TO anon, authenticated, public;
+
+-- Desactivar RLS (recomendado para autenticación directa en tabla users):
+ALTER TABLE public.calendars DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.calendar_permissions DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.tasks DISABLE ROW LEVEL SECURITY;
+ALTER TABLE public.users DISABLE ROW LEVEL SECURITY;
+
+-- Políticas universales en caso de que RLS sea habilitado manualmente:
 DROP POLICY IF EXISTS "Permitir todo anon y authenticated en users" ON public.users;
-CREATE POLICY "Permitir todo anon y authenticated en users" ON public.users FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "Acceso universal public users" ON public.users;
+CREATE POLICY "Acceso universal public users" ON public.users FOR ALL TO public USING (true) WITH CHECK (true);
 
 DROP POLICY IF EXISTS "Permitir todo anon y authenticated en calendars" ON public.calendars;
-CREATE POLICY "Permitir todo anon y authenticated en calendars" ON public.calendars FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "Acceso universal public calendars" ON public.calendars;
+CREATE POLICY "Acceso universal public calendars" ON public.calendars FOR ALL TO public USING (true) WITH CHECK (true);
 
 DROP POLICY IF EXISTS "Permitir todo anon y authenticated en calendar_permissions" ON public.calendar_permissions;
-CREATE POLICY "Permitir todo anon y authenticated en calendar_permissions" ON public.calendar_permissions FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "Acceso universal public calendar_permissions" ON public.calendar_permissions;
+CREATE POLICY "Acceso universal public calendar_permissions" ON public.calendar_permissions FOR ALL TO public USING (true) WITH CHECK (true);
 
 DROP POLICY IF EXISTS "Permitir todo anon y authenticated en tasks" ON public.tasks;
-CREATE POLICY "Permitir todo anon y authenticated en tasks" ON public.tasks FOR ALL TO anon, authenticated USING (true) WITH CHECK (true);
+DROP POLICY IF EXISTS "Acceso universal public tasks" ON public.tasks;
+CREATE POLICY "Acceso universal public tasks" ON public.tasks FOR ALL TO public USING (true) WITH CHECK (true);

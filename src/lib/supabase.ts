@@ -704,6 +704,25 @@ class PlanifikaDataService {
             avatar_url: `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(cleanName)}`,
             system_role: role,
           };
+
+          // Guardar en almacén local para disponibilidad instantánea
+          const store = this.getLocalStore();
+          if (!store.users.some((u) => u.email.toLowerCase() === cleanEmail)) {
+            store.users.push({
+              id: user.id,
+              email: user.email,
+              password: passwordInput,
+              full_name: user.full_name,
+              avatar_url: user.avatar_url,
+              system_role: user.system_role,
+              created_at: new Date().toISOString(),
+            });
+          }
+          if (!store.profiles.some((p) => p.email.toLowerCase() === cleanEmail)) {
+            store.profiles.push(user);
+          }
+          this.saveLocalStore(store);
+
           return { success: true, user };
         }
 
@@ -731,15 +750,34 @@ class PlanifikaDataService {
           .single();
 
         if (!insertError && insertData) {
+          const user: UserProfile = {
+            id: insertData.id,
+            email: insertData.email,
+            full_name: insertData.full_name,
+            avatar_url: insertData.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(cleanName)}`,
+            system_role: insertData.role === 'admin' ? 'admin' : 'user',
+          };
+
+          const store = this.getLocalStore();
+          if (!store.users.some((u) => u.email.toLowerCase() === cleanEmail)) {
+            store.users.push({
+              id: user.id,
+              email: user.email,
+              password: passwordInput,
+              full_name: user.full_name,
+              avatar_url: user.avatar_url,
+              system_role: user.system_role,
+              created_at: new Date().toISOString(),
+            });
+          }
+          if (!store.profiles.some((p) => p.email.toLowerCase() === cleanEmail)) {
+            store.profiles.push(user);
+          }
+          this.saveLocalStore(store);
+
           return {
             success: true,
-            user: {
-              id: insertData.id,
-              email: insertData.email,
-              full_name: insertData.full_name,
-              avatar_url: insertData.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(cleanName)}`,
-              system_role: insertData.role === 'admin' ? 'admin' : 'user',
-            },
+            user,
           };
         }
 
@@ -860,39 +898,115 @@ class PlanifikaDataService {
 
   // --- PROFILES / GESTIÓN DE USUARIOS DE LA APLICACIÓN ---
   public async getProfiles(): Promise<UserProfile[]> {
-    if (this.supabase && this.isLiveConnected) {
-      try {
-        // Consultar directamente de public.users
-        const { data, error } = await this.supabase
-          .from('users')
-          .select('id, email, full_name, avatar_url, role, created_at');
+    const profileMap = new Map<string, UserProfile>();
 
-        if (!error && data && data.length > 0) {
-          return data.map((u: any) => ({
+    // 1. Perfiles demo base
+    DEMO_PROFILES.forEach((p) => {
+      profileMap.set(p.email.toLowerCase(), p);
+    });
+
+    // 2. Usuarios y perfiles almacenados localmente
+    const store = this.getLocalStore();
+    if (store.profiles) {
+      store.profiles.forEach((p) => {
+        if (p.email) {
+          profileMap.set(p.email.toLowerCase(), p);
+        }
+      });
+    }
+    if (store.users) {
+      store.users.forEach((u) => {
+        if (u.email) {
+          const p: UserProfile = {
             id: u.id,
             email: u.email,
             full_name: u.full_name,
             avatar_url: u.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(u.full_name)}`,
-            system_role: u.role === 'admin' ? 'admin' : 'user',
+            system_role: u.system_role === 'admin' ? 'admin' : 'user',
             created_at: u.created_at,
-          }));
+          };
+          profileMap.set(p.email.toLowerCase(), p);
+        }
+      });
+    }
+
+    // 3. Si hay conexión en vivo con Supabase, consultar la tabla public.users
+    if (this.supabase && this.isLiveConnected) {
+      try {
+        const { data, error } = await this.supabase
+          .from('users')
+          .select('id, email, full_name, avatar_url, role, created_at')
+          .order('created_at', { ascending: true });
+
+        if (!error && data && data.length > 0) {
+          data.forEach((u: any) => {
+            if (u.email) {
+              const p: UserProfile = {
+                id: u.id,
+                email: u.email,
+                full_name: u.full_name,
+                avatar_url: u.avatar_url || `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(u.full_name)}`,
+                system_role: u.role === 'admin' ? 'admin' : 'user',
+                created_at: u.created_at,
+              };
+              profileMap.set(p.email.toLowerCase(), p);
+            }
+          });
         }
       } catch (err) {
-        console.warn('Error al consultar tabla users en Supabase, usando usuarios locales:', err);
+        console.warn('Error al consultar tabla users en Supabase, utilizando perfiles consolidados:', err);
       }
     }
-    const store = this.getLocalStore();
-    return store.profiles;
+
+    const profilesList = Array.from(profileMap.values());
+
+    // Mantener sincronizado el almacén local
+    if (profilesList.length > (store.profiles?.length || 0)) {
+      store.profiles = profilesList;
+      this.saveLocalStore(store);
+    }
+
+    return profilesList;
   }
 
   public async createProfile(profile: UserProfile): Promise<UserProfile> {
     const store = this.getLocalStore();
-    const existing = store.profiles.find((p) => p.email.toLowerCase() === profile.email.toLowerCase());
-    if (existing) {
-      return existing;
+    const cleanEmail = profile.email.toLowerCase().trim();
+
+    const existing = store.profiles.find((p) => p.email.toLowerCase() === cleanEmail);
+    if (!existing) {
+      store.profiles.push(profile);
     }
-    store.profiles.push(profile);
+    const existingUser = store.users.find((u) => u.email.toLowerCase() === cleanEmail);
+    if (!existingUser) {
+      store.users.push({
+        id: profile.id,
+        email: cleanEmail,
+        password: 'password123',
+        full_name: profile.full_name,
+        avatar_url: profile.avatar_url,
+        system_role: profile.system_role,
+        created_at: profile.created_at || new Date().toISOString(),
+      });
+    }
     this.saveLocalStore(store);
+
+    // Si está conectado a Supabase, sincronizar también en public.users
+    if (this.supabase && this.isLiveConnected) {
+      try {
+        await this.supabase.from('users').upsert({
+          id: profile.id,
+          email: cleanEmail,
+          full_name: profile.full_name,
+          avatar_url: profile.avatar_url,
+          role: profile.system_role,
+          password_hash: '$2a$10$wE6vXp8F7e61hNlZ74l1jO4H3pLkW0k0x9n.3m2x5q7e.8z1k3w9e',
+        }, { onConflict: 'email' });
+      } catch (e) {
+        console.warn('Aviso al sincronizar perfil en Supabase:', e);
+      }
+    }
+
     return profile;
   }
 
@@ -960,26 +1074,29 @@ class PlanifikaDataService {
       }
     }
 
-    // 4. If user does not exist in Supabase yet (e.g. fresh DB before seeding Carlos),
-    // ensure Carlos exists with demo UUID so foreign keys on owner_id succeed:
-    if (userId === 'usr-admin-carlos' || userId === DEMO_UUIDS.CARLOS || candidateEmail === 'carlos.admin@planifika.app') {
+    // 4. If user does not exist in Supabase yet (e.g. fresh DB before seeding),
+    // ensure user exists in public.users table so foreign key on owner_id succeeds:
+    if (candidateEmail || isUuid(userId) || userId === 'usr-admin-carlos' || userId === DEMO_UUIDS.CARLOS) {
+      const emailToUse = candidateEmail || (userId === 'usr-admin-carlos' || userId === DEMO_UUIDS.CARLOS ? 'carlos.admin@planifika.app' : `user-${userId.slice(0, 8)}@planifika.local`);
+      const idToUse = isUuid(userId) ? userId : DEMO_UUIDS.CARLOS;
+      const nameToUse = emailToUse.split('@')[0];
       try {
         const { data } = await this.supabase
           .from('users')
           .upsert({
-            id: DEMO_UUIDS.CARLOS,
-            email: 'carlos.admin@planifika.app',
+            id: idToUse,
+            email: emailToUse,
             password_hash: '$2a$10$wE6vXp8F7e61hNlZ74l1jO4H3pLkW0k0x9n.3m2x5q7e.8z1k3w9e',
-            full_name: 'Carlos Martínez (Administrador)',
+            full_name: nameToUse,
             role: 'admin',
           }, { onConflict: 'email' })
           .select('id')
           .maybeSingle();
         if (data?.id) return data.id;
       } catch (e) {
-        console.warn('Could not auto-seed Carlos in Supabase users table:', e);
+        console.warn('Could not auto-seed user in Supabase users table:', e);
       }
-      return DEMO_UUIDS.CARLOS;
+      return idToUse;
     }
 
     return isUuid(userId) ? userId : DEMO_UUIDS.CARLOS;
@@ -1023,7 +1140,17 @@ class PlanifikaDataService {
                 role,
               };
             });
-          return userCalendars;
+
+          // Combinar con calendarios locales guardados durante desconexión o bloqueo RLS
+          const store = this.getLocalStore();
+          const cleanUserId = sanitizeUserId(userId);
+          const localOnly = store.calendars.filter(
+            (lc) =>
+              (lc.owner_id === userId || lc.owner_id === resolvedUserId || lc.owner_id === cleanUserId) &&
+              !userCalendars.some((uc) => uc.id === lc.id)
+          );
+
+          return [...userCalendars, ...localOnly];
         }
       } catch (err) {
         console.warn('Fallback to local calendars', err);
@@ -1071,6 +1198,36 @@ class PlanifikaDataService {
     };
 
     if (this.supabase && this.isLiveConnected) {
+      // 1. Probar vía RPC create_app_calendar (SECURITY DEFINER para eludir restricciones RLS anónimas)
+      try {
+        const { data: rpcData, error: rpcError } = await this.supabase.rpc('create_app_calendar', {
+          p_name: name,
+          p_description: description || '',
+          p_color_theme: colorTheme,
+          p_owner_id: resolvedOwnerId,
+        });
+
+        if (!rpcError && rpcData) {
+          const created: Calendar = {
+            id: rpcData.id,
+            name: rpcData.name,
+            description: rpcData.description || '',
+            color_theme: rpcData.color_theme || colorTheme,
+            owner_id: rpcData.owner_id,
+            created_at: rpcData.created_at,
+            updated_at: rpcData.updated_at,
+            role: 'admin',
+          };
+          const store = this.getLocalStore();
+          store.calendars.unshift(created);
+          this.saveLocalStore(store);
+          return created;
+        }
+      } catch (rpcErr) {
+        // Fallback a inserción directa si la RPC no existe aún
+      }
+
+      // 2. Inserción directa en tabla calendars
       try {
         const { data, error } = await this.supabase
           .from('calendars')
@@ -1085,21 +1242,52 @@ class PlanifikaDataService {
 
         if (error) {
           console.error('Error al insertar calendario en Supabase:', error);
+
+          const isRlsError =
+            error.message?.toLowerCase().includes('row-level security') ||
+            error.code === '42501' ||
+            (error.details && error.details.toLowerCase().includes('policy'));
+
+          if (isRlsError) {
+            // Guardar localmente para no interrumpir el trabajo del usuario
+            const store = this.getLocalStore();
+            store.calendars.unshift(newCalendar);
+            store.permissions.push({
+              id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `perm-${Date.now()}`,
+              calendar_id: newCalendar.id,
+              user_id: resolvedOwnerId,
+              role: 'admin',
+              granted_by: resolvedOwnerId,
+              created_at: new Date().toISOString(),
+            });
+            this.saveLocalStore(store);
+
+            throw new Error(
+              'Aviso RLS Supabase: La tabla "calendars" tiene Row Level Security activo bloqueando clientes anónimos. ' +
+              'El calendario se ha guardado localmente para que puedas seguir trabajando. ' +
+              'Para solucionarlo en Supabase, ejecuta en el SQL Editor: ALTER TABLE public.calendars DISABLE ROW LEVEL SECURITY;'
+            );
+          }
+
           throw new Error(error.message || 'Error al guardar el calendario en Supabase');
         }
 
         if (data) {
           // Asegurar permiso de admin explícito para el creador
-          await this.supabase
-            .from('calendar_permissions')
-            .upsert({
-              calendar_id: data.id,
-              user_id: resolvedOwnerId,
-              role: 'admin',
-              granted_by: resolvedOwnerId,
-            }, { onConflict: 'calendar_id, user_id' });
+          try {
+            await this.supabase
+              .from('calendar_permissions')
+              .upsert({
+                calendar_id: data.id,
+                user_id: resolvedOwnerId,
+                role: 'admin',
+                granted_by: resolvedOwnerId,
+              }, { onConflict: 'calendar_id, user_id' });
+          } catch (permErr) {
+            console.warn('Aviso permisos en Supabase:', permErr);
+          }
 
-          return {
+          const created: Calendar = {
             id: data.id,
             name: data.name,
             description: data.description || '',
@@ -1109,6 +1297,12 @@ class PlanifikaDataService {
             updated_at: data.updated_at,
             role: 'admin',
           };
+
+          const store = this.getLocalStore();
+          store.calendars.unshift(created);
+          this.saveLocalStore(store);
+
+          return created;
         }
       } catch (err: any) {
         console.warn('Error inserting calendar to supabase:', err);
@@ -1118,7 +1312,6 @@ class PlanifikaDataService {
 
     const store = this.getLocalStore();
     store.calendars.unshift(newCalendar);
-    // Add owner permission as admin
     store.permissions.push({
       id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `perm-${Date.now()}`,
       calendar_id: newCalendar.id,

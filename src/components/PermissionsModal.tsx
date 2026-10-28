@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
-import { UserRole } from '../types';
+import { UserRole, UserProfile } from '../types';
+import { LEGACY_USER_ID_MAP } from '../lib/supabase';
 import {
   X,
   Shield,
@@ -20,6 +21,7 @@ export const PermissionsModal: React.FC = () => {
     activeCalendar,
     permissions,
     allProfiles,
+    loadProfiles,
     grantPermission,
     revokePermission,
     isAdmin,
@@ -30,14 +32,52 @@ export const PermissionsModal: React.FC = () => {
   const [selectedRole, setSelectedRole] = useState<UserRole>('viewer');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // Recargar perfiles frescos de Supabase y local cada vez que se abre el modal
+  useEffect(() => {
+    if (isPermissionsModalOpen) {
+      loadProfiles();
+    }
+  }, [isPermissionsModalOpen, loadProfiles]);
+
   if (!isPermissionsModalOpen || !activeCalendar) return null;
 
-  // Filter out users who already have permissions or are owners
+  const ownerId = activeCalendar.owner_id;
+  const normalizedOwnerId = LEGACY_USER_ID_MAP[ownerId] || ownerId;
+
+  const isOwner = (profile: UserProfile) => {
+    const profId = profile.id;
+    const normalizedProfId = LEGACY_USER_ID_MAP[profId] || profId;
+    return (
+      profId === ownerId ||
+      normalizedProfId === normalizedOwnerId ||
+      profId === normalizedOwnerId ||
+      normalizedProfId === ownerId
+    );
+  };
+
+  const hasPermission = (profile: UserProfile) => {
+    const profId = profile.id;
+    const normalizedProfId = LEGACY_USER_ID_MAP[profId] || profId;
+    return permissions.some((p) => {
+      const pUserId = p.user_id;
+      const normalizedPUserId = LEGACY_USER_ID_MAP[pUserId] || pUserId;
+      return (
+        pUserId === profId ||
+        normalizedPUserId === normalizedProfId ||
+        pUserId === normalizedProfId ||
+        normalizedPUserId === profId ||
+        (p.user_profile?.email && p.user_profile.email.toLowerCase() === profile.email.toLowerCase())
+      );
+    });
+  };
+
+  // Filtrar todos los usuarios del sistema, excluyendo al propietario del calendario
+  // y a aquellos que ya tienen un permiso asignado
   const nonMemberProfiles = allProfiles.filter(
-    (profile) =>
-      profile.id !== activeCalendar.owner_id &&
-      !permissions.some((p) => p.user_id === profile.id)
+    (profile) => !isOwner(profile) && !hasPermission(profile)
   );
+
+  const ownerProfile = allProfiles.find((p) => isOwner(p));
 
   const handleAddMember = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -188,14 +228,14 @@ export const PermissionsModal: React.FC = () => {
                   <div>
                     <div className="flex items-center gap-1.5">
                       <span className="text-xs font-bold text-slate-900">
-                        {allProfiles.find((p) => p.id === activeCalendar.owner_id)?.full_name || 'Creador original'}
+                        {ownerProfile?.full_name || 'Propietario del calendario'}
                       </span>
                       <span className="text-[10px] font-semibold text-amber-800 bg-amber-100 px-1.5 py-0.2 rounded">
                         Propietario / Creador
                       </span>
                     </div>
                     <p className="text-[11px] text-slate-500">
-                      {allProfiles.find((p) => p.id === activeCalendar.owner_id)?.email}
+                      {ownerProfile?.email}
                     </p>
                   </div>
                 </div>

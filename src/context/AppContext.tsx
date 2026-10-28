@@ -30,6 +30,7 @@ interface AppContextType {
   switchDemoUser: (userId: string) => void;
   logout: () => Promise<void>;
   allProfiles: UserProfile[];
+  loadProfiles: () => Promise<void>;
   addNewProfile: (profile: UserProfile) => Promise<void>;
   
   calendars: Calendar[];
@@ -212,9 +213,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, []);
 
   // Switch demo user
-  const switchDemoUser = useCallback((userId: string) => {
+  const switchDemoUser = useCallback(async (userId: string) => {
     const cleanId = LEGACY_USER_ID_MAP[userId] || userId;
-    const user = allProfiles.find((p) => p.id === cleanId || p.id === userId) || DEMO_PROFILES.find((p) => p.id === cleanId || p.id === userId);
+    let user = allProfiles.find((p) => p.id === cleanId || p.id === userId) || DEMO_PROFILES.find((p) => p.id === cleanId || p.id === userId);
+    if (!user) {
+      const freshProfiles = await planifikaService.getProfiles();
+      user = freshProfiles.find((p) => p.id === cleanId || p.id === userId);
+      if (user) {
+        setAllProfiles(freshProfiles);
+      }
+    }
     if (user) {
       setCurrentUser(user);
       localStorage.setItem('planifika_active_user_id', user.id);
@@ -240,12 +248,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const addNewProfile = useCallback(async (profile: UserProfile) => {
     const created = await planifikaService.createProfile(profile);
-    setAllProfiles((prev) => {
-      if (prev.some((p) => p.id === created.id)) return prev;
-      return [...prev, created];
-    });
+    await loadProfiles();
     showToast(`Usuario ${created.full_name} añadido al sistema`, 'success');
-  }, [showToast]);
+  }, [loadProfiles, showToast]);
 
   // Load calendars for current user
   const loadCalendars = useCallback(async () => {
@@ -580,6 +585,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       showToast(`Calendario "${newCal.name}" creado con éxito. Eres el administrador.`, 'success');
       return newCal;
     } catch (err: any) {
+      if (err?.message?.includes('Aviso RLS Supabase')) {
+        await loadCalendars();
+        const userCals = await planifikaService.getCalendarsForUser(currentUser.id, currentUser.email);
+        if (userCals.length > 0) {
+          setActiveCalendarId(userCals[0].id);
+        }
+        showToast(err.message, 'info');
+        return userCals[0];
+      }
       showToast(err?.message || 'Error al crear el calendario', 'error');
       throw err;
     }
@@ -676,8 +690,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       showToast('Solo el administrador del calendario puede gestionar permisos', 'error');
       return;
     }
+    loadProfiles();
+    loadPermissions();
     setIsPermissionsModalOpen(true);
-  }, [isAdmin, showToast]);
+  }, [isAdmin, loadProfiles, loadPermissions, showToast]);
 
   const closePermissionsModal = useCallback(() => {
     setIsPermissionsModalOpen(false);
@@ -705,6 +721,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     switchDemoUser,
     logout,
     allProfiles,
+    loadProfiles,
     addNewProfile,
     calendars,
     activeCalendar,
