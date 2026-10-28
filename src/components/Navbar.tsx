@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { UserProfile } from '../types';
+import { UserProfile, APP_VERSION } from '../types';
 import { isDemoAccount, planifikaService } from '../lib/supabase';
 import {
   CalendarDays,
@@ -155,7 +155,7 @@ export const Navbar: React.FC = () => {
                   Planifika
                 </span>
                 <span className="text-[10px] font-mono font-bold bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded border border-slate-200">
-                  v1.0.12
+                  {APP_VERSION}
                 </span>
               </div>
             </button>

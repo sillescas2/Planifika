@@ -1208,6 +1208,7 @@ class PlanifikaDataService {
                 role,
               };
             });
+          return supabaseCalendars;
         }
       } catch (err) {
         console.warn('Fallback to local calendars', err);
@@ -1230,11 +1231,7 @@ class PlanifikaDataService {
         };
       });
 
-    const combinedMap = new Map<string, Calendar>();
-    localCalendars.forEach((c) => combinedMap.set(c.id, c));
-    supabaseCalendars.forEach((c) => combinedMap.set(c.id, c));
-
-    return Array.from(combinedMap.values());
+    return localCalendars;
   }
 
   public async createCalendar(
@@ -1613,6 +1610,44 @@ class PlanifikaDataService {
 
   // --- TASKS ---
   public async getTasksForWeek(calendarId: string, weekStartDate: string): Promise<Task[]> {
+    if (this.supabase && this.isLiveConnected) {
+      try {
+        const { data, error } = await this.supabase
+          .from('tasks')
+          .select('*')
+          .eq('calendar_id', calendarId)
+          .eq('week_start_date', weekStartDate)
+          .order('position', { ascending: true });
+
+        if (!error && data) {
+          const tasksList: Task[] = data.map((t: any) => ({
+            id: t.id,
+            calendar_id: t.calendar_id,
+            title: t.title,
+            description: t.description || '',
+            color: t.color || 'sky',
+            day_of_week: t.day_of_week,
+            status: t.status || 'pending',
+            week_start_date: typeof t.week_start_date === 'string' ? t.week_start_date.substring(0, 10) : t.week_start_date,
+            time_estimate: t.time_estimate || '',
+            position: t.position || 0,
+            created_by: t.created_by,
+            created_at: t.created_at,
+            updated_at: t.updated_at,
+          }));
+
+          const store = this.getLocalStore();
+          const otherTasks = store.tasks.filter((t) => !(t.calendar_id === calendarId && t.week_start_date === weekStartDate));
+          store.tasks = [...otherTasks, ...tasksList];
+          this.saveLocalStore(store);
+
+          return tasksList;
+        }
+      } catch (err) {
+        console.warn('Error querying tasks for week from Supabase:', err);
+      }
+    }
+
     const store = this.getLocalStore();
     return store.tasks
       .filter((t) => t.calendar_id === calendarId && t.week_start_date === weekStartDate)
@@ -1620,21 +1655,117 @@ class PlanifikaDataService {
   }
 
   public async getAllTasksForCalendar(calendarId: string): Promise<Task[]> {
+    if (this.supabase && this.isLiveConnected) {
+      try {
+        const { data, error } = await this.supabase
+          .from('tasks')
+          .select('*')
+          .eq('calendar_id', calendarId)
+          .order('position', { ascending: true });
+
+        if (!error && data) {
+          const tasksList: Task[] = data.map((t: any) => ({
+            id: t.id,
+            calendar_id: t.calendar_id,
+            title: t.title,
+            description: t.description || '',
+            color: t.color || 'sky',
+            day_of_week: t.day_of_week,
+            status: t.status || 'pending',
+            week_start_date: typeof t.week_start_date === 'string' ? t.week_start_date.substring(0, 10) : t.week_start_date,
+            time_estimate: t.time_estimate || '',
+            position: t.position || 0,
+            created_by: t.created_by,
+            created_at: t.created_at,
+            updated_at: t.updated_at,
+          }));
+
+          const store = this.getLocalStore();
+          const otherTasks = store.tasks.filter((t) => t.calendar_id !== calendarId);
+          store.tasks = [...otherTasks, ...tasksList];
+          this.saveLocalStore(store);
+
+          return tasksList;
+        }
+      } catch (err) {
+        console.warn('Error querying all tasks from Supabase:', err);
+      }
+    }
+
     const store = this.getLocalStore();
     return store.tasks.filter((t) => t.calendar_id === calendarId);
   }
 
   public async createTask(taskData: Omit<Task, 'id' | 'created_at' | 'updated_at'>): Promise<Task> {
-    const store = this.getLocalStore();
-    const newTask: Task = {
+    const resolvedCreatedBy = taskData.created_by
+      ? await this.resolveSupabaseUserId(taskData.created_by)
+      : undefined;
+
+    const fallbackTask: Task = {
       ...taskData,
-      id: `task-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `task-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      created_by: resolvedCreatedBy || taskData.created_by,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
-    store.tasks.push(newTask);
+
+    if (this.supabase && this.isLiveConnected) {
+      try {
+        const payload: any = {
+          calendar_id: taskData.calendar_id,
+          title: taskData.title,
+          description: taskData.description || '',
+          color: taskData.color || 'sky',
+          day_of_week: taskData.day_of_week,
+          status: taskData.status || 'pending',
+          week_start_date: taskData.week_start_date,
+          time_estimate: taskData.time_estimate || '',
+          position: taskData.position || 0,
+        };
+        if (resolvedCreatedBy && isUuid(resolvedCreatedBy)) {
+          payload.created_by = resolvedCreatedBy;
+        }
+
+        const { data, error } = await this.supabase
+          .from('tasks')
+          .insert(payload)
+          .select()
+          .single();
+
+        if (!error && data) {
+          const createdTask: Task = {
+            id: data.id,
+            calendar_id: data.calendar_id,
+            title: data.title,
+            description: data.description || '',
+            color: data.color || 'sky',
+            day_of_week: data.day_of_week,
+            status: data.status || 'pending',
+            week_start_date: typeof data.week_start_date === 'string' ? data.week_start_date.substring(0, 10) : data.week_start_date,
+            time_estimate: data.time_estimate || '',
+            position: data.position || 0,
+            created_by: data.created_by,
+            created_at: data.created_at,
+            updated_at: data.updated_at,
+          };
+
+          const store = this.getLocalStore();
+          store.tasks.push(createdTask);
+          this.saveLocalStore(store);
+
+          return createdTask;
+        } else if (error) {
+          console.warn('Supabase task insert error:', error);
+        }
+      } catch (err) {
+        console.warn('Error inserting task into Supabase:', err);
+      }
+    }
+
+    const store = this.getLocalStore();
+    store.tasks.push(fallbackTask);
     this.saveLocalStore(store);
-    return newTask;
+    return fallbackTask;
   }
 
   public async updateTask(
@@ -1644,16 +1775,9 @@ class PlanifikaDataService {
   ): Promise<{ success: boolean; task?: Task; error?: string }> {
     const store = this.getLocalStore();
     const idx = store.tasks.findIndex((t) => t.id === taskId);
-    if (idx === -1) {
-      return { success: false, error: 'Tarea no encontrada' };
-    }
+    const currentTask = idx !== -1 ? store.tasks[idx] : null;
 
-    const currentTask = store.tasks[idx];
-
-    // CRITICAL REQUIREMENT ENFORCEMENT:
-    // "La acción de marcar una tarea como Completada (o cambiar sus estados de completitud)
-    // sólo la podrá realizar el usuario administrador del calendario. Los demás usuarios solo podrán visualizar el estado."
-    if (updates.status !== undefined && updates.status !== currentTask.status) {
+    if (updates.status !== undefined && currentTask && updates.status !== currentTask.status) {
       if (userRole !== 'admin') {
         return {
           success: false,
@@ -1662,7 +1786,6 @@ class PlanifikaDataService {
       }
     }
 
-    // Viewers cannot modify tasks
     if (userRole === 'viewer') {
       return {
         success: false,
@@ -1670,8 +1793,56 @@ class PlanifikaDataService {
       };
     }
 
+    if (this.supabase && this.isLiveConnected && isUuid(taskId)) {
+      try {
+        const payload: any = { ...updates, updated_at: new Date().toISOString() };
+        delete payload.id;
+        delete payload.calendar_id;
+
+        const { data, error } = await this.supabase
+          .from('tasks')
+          .update(payload)
+          .eq('id', taskId)
+          .select()
+          .single();
+
+        if (!error && data) {
+          const updatedTask: Task = {
+            id: data.id,
+            calendar_id: data.calendar_id,
+            title: data.title,
+            description: data.description || '',
+            color: data.color || 'sky',
+            day_of_week: data.day_of_week,
+            status: data.status || 'pending',
+            week_start_date: typeof data.week_start_date === 'string' ? data.week_start_date.substring(0, 10) : data.week_start_date,
+            time_estimate: data.time_estimate || '',
+            position: data.position || 0,
+            created_by: data.created_at,
+            created_at: data.created_at,
+            updated_at: data.updated_at,
+          };
+
+          if (idx !== -1) {
+            store.tasks[idx] = updatedTask;
+          } else {
+            store.tasks.push(updatedTask);
+          }
+          this.saveLocalStore(store);
+
+          return { success: true, task: updatedTask };
+        }
+      } catch (err) {
+        console.warn('Error updating task in Supabase:', err);
+      }
+    }
+
+    if (idx === -1) {
+      return { success: false, error: 'Tarea no encontrada' };
+    }
+
     store.tasks[idx] = {
-      ...currentTask,
+      ...currentTask!,
       ...updates,
       updated_at: new Date().toISOString(),
     };
@@ -1687,6 +1858,15 @@ class PlanifikaDataService {
         error: 'Permiso denegado: Los espectadores no pueden eliminar tareas.',
       };
     }
+
+    if (this.supabase && this.isLiveConnected && isUuid(taskId)) {
+      try {
+        await this.supabase.from('tasks').delete().eq('id', taskId);
+      } catch (err) {
+        console.warn('Error deleting task from Supabase:', err);
+      }
+    }
+
     const store = this.getLocalStore();
     store.tasks = store.tasks.filter((t) => t.id !== taskId);
     this.saveLocalStore(store);
@@ -1702,6 +1882,28 @@ class PlanifikaDataService {
         success: false,
         error: 'Permiso denegado: Los espectadores no pueden mover o reordenar tareas.',
       };
+    }
+
+    if (this.supabase && this.isLiveConnected) {
+      try {
+        await Promise.all(
+          tasksToUpdate.map((item) => {
+            if (isUuid(item.id)) {
+              return this.supabase!
+                .from('tasks')
+                .update({
+                  day_of_week: item.day_of_week,
+                  position: item.position,
+                  updated_at: new Date().toISOString(),
+                })
+                .eq('id', item.id);
+            }
+            return Promise.resolve();
+          })
+        );
+      } catch (err) {
+        console.warn('Error reordering tasks in Supabase:', err);
+      }
     }
 
     const store = this.getLocalStore();

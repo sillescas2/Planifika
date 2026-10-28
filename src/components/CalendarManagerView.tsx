@@ -31,6 +31,7 @@ export const CalendarManagerView: React.FC = () => {
   const [description, setDescription] = useState('');
   const [theme, setTheme] = useState<'blue' | 'emerald' | 'indigo' | 'violet' | 'amber'>('blue');
   const [submitting, setSubmitting] = useState(false);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -48,8 +49,6 @@ export const CalendarManagerView: React.FC = () => {
       setSubmitting(false);
     }
   };
-
-  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
   const handleDelete = async (id: string) => {
     await deleteCalendar(id);

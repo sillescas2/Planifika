@@ -31,6 +31,8 @@ export const PermissionsModal: React.FC = () => {
   const [selectedUserId, setSelectedUserId] = useState('');
   const [selectedRole, setSelectedRole] = useState<UserRole>('viewer');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [confirmRevokeId, setConfirmRevokeId] = useState<string | null>(null);
+  const [isRevoking, setIsRevoking] = useState(false);
 
   // Recargar perfiles frescos de Supabase y local cada vez que se abre el modal
   useEffect(() => {
@@ -91,9 +93,6 @@ export const PermissionsModal: React.FC = () => {
       setIsSubmitting(false);
     }
   };
-
-  const [confirmRevokeId, setConfirmRevokeId] = useState<string | null>(null);
-  const [isRevoking, setIsRevoking] = useState(false);
 
   const handleRoleChange = async (userId: string, newRole: UserRole) => {
     await grantPermission(userId, newRole);

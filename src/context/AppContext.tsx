@@ -348,6 +348,35 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, [activeCalendarId, selectedWeekStart, loadPermissions, loadTasks]);
 
+  // Effect: Auto-refresh on window focus, visibility change or periodic background sync (10s)
+  useEffect(() => {
+    const refreshAllData = () => {
+      loadProfiles();
+      loadCalendars();
+      if (activeCalendarId) {
+        loadPermissions();
+        loadTasks();
+      }
+    };
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        refreshAllData();
+      }
+    };
+
+    window.addEventListener('focus', refreshAllData);
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    const intervalId = setInterval(refreshAllData, 10000);
+
+    return () => {
+      window.removeEventListener('focus', refreshAllData);
+      document.removeEventListener('visibilitychange', handleVisibility);
+      clearInterval(intervalId);
+    };
+  }, [loadProfiles, loadCalendars, activeCalendarId, loadPermissions, loadTasks]);
+
   // Week navigation methods
   const goToNextWeek = useCallback(() => {
     const current = parseISODate(selectedWeekStart);
@@ -648,8 +677,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
     await planifikaService.setCalendarPermission(activeCalendarId, userId, role, currentUser.id);
     await loadPermissions();
-    showToast('Permisos actualizados para el usuario', 'success');
-  }, [isAdmin, currentUser, activeCalendarId, loadPermissions, showToast]);
+    await loadCalendars();
+    showToast('Permisos actualizados y calendario compartido con éxito', 'success');
+  }, [isAdmin, currentUser, activeCalendarId, loadPermissions, loadCalendars, showToast]);
 
   const revokePermission = useCallback(async (userId: string, permId?: string) => {
     if (!isAdmin) {

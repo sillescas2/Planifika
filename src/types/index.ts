@@ -1,3 +1,5 @@
+export const APP_VERSION = 'v1.0.14';
+
 export type DayOfWeek = 'lunes' | 'martes' | 'miercoles' | 'jueves' | 'viernes' | 'sabado' | 'domingo';
 
 export type TaskStatus = 'pending' | 'partial' | 'completed' | 'none';
