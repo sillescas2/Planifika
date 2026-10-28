@@ -1434,25 +1434,23 @@ class PlanifikaDataService {
       try {
         const { data, error } = await this.supabase
           .from('calendar_permissions')
-          .select('*, user:users(id, email, full_name, avatar_url, role)')
+          .select('*')
           .eq('calendar_id', calendarId);
 
         if (!error && data) {
-          const remotePerms: CalendarPermission[] = data.map((p: any) => ({
-            id: p.id,
-            calendar_id: p.calendar_id,
-            user_id: p.user_id,
-            role: p.role as UserRole,
-            granted_by: p.granted_by,
-            created_at: p.created_at,
-            user_profile: p.user ? {
-              id: p.user.id,
-              email: p.user.email,
-              full_name: p.user.full_name,
-              avatar_url: p.user.avatar_url,
-              system_role: p.user.role === 'admin' ? 'admin' : 'user',
-            } : undefined,
-          }));
+          const profiles = await this.getProfiles();
+          const remotePerms: CalendarPermission[] = data.map((p: any) => {
+            const prof = profiles.find((pr) => pr.id === p.user_id || pr.email.toLowerCase() === p.user_id?.toLowerCase());
+            return {
+              id: p.id,
+              calendar_id: p.calendar_id,
+              user_id: p.user_id,
+              role: p.role as UserRole,
+              granted_by: p.granted_by,
+              created_at: p.created_at,
+              user_profile: prof,
+            };
+          });
 
           // Repair check: sync any local permissions for this calendar that are missing in Supabase
           const store = this.getLocalStore();
@@ -1492,24 +1490,21 @@ class PlanifikaDataService {
           if (syncedAny) {
             const { data: refetched } = await this.supabase
               .from('calendar_permissions')
-              .select('*, user:users(id, email, full_name, avatar_url, role)')
+              .select('*')
               .eq('calendar_id', calendarId);
             if (refetched) {
-              return refetched.map((p: any) => ({
-                id: p.id,
-                calendar_id: p.calendar_id,
-                user_id: p.user_id,
-                role: p.role as UserRole,
-                granted_by: p.granted_by,
-                created_at: p.created_at,
-                user_profile: p.user ? {
-                  id: p.user.id,
-                  email: p.user.email,
-                  full_name: p.user.full_name,
-                  avatar_url: p.user.avatar_url,
-                  system_role: p.user.role === 'admin' ? 'admin' : 'user',
-                } : undefined,
-              }));
+              return refetched.map((p: any) => {
+                const prof = profiles.find((pr) => pr.id === p.user_id || pr.email.toLowerCase() === p.user_id?.toLowerCase());
+                return {
+                  id: p.id,
+                  calendar_id: p.calendar_id,
+                  user_id: p.user_id,
+                  role: p.role as UserRole,
+                  granted_by: p.granted_by,
+                  created_at: p.created_at,
+                  user_profile: prof,
+                };
+              });
             }
           }
 
@@ -1560,7 +1555,7 @@ class PlanifikaDataService {
             role,
             granted_by: resolvedGrantedBy,
           })
-          .select('*, user:users(id, email, full_name, avatar_url, role)')
+          .select('*')
           .single();
 
         if (error) {
@@ -1569,6 +1564,8 @@ class PlanifikaDataService {
         }
 
         if (data) {
+          const profiles = await this.getProfiles();
+          const prof = profiles.find((pr) => pr.id === data.user_id) || existingProfile;
           remotePerm = {
             id: data.id,
             calendar_id: data.calendar_id,
@@ -1576,19 +1573,13 @@ class PlanifikaDataService {
             role: data.role as UserRole,
             granted_by: data.granted_by,
             created_at: data.created_at,
-            user_profile: data.user ? {
-              id: data.user.id,
-              email: data.user.email,
-              full_name: data.user.full_name,
-              avatar_url: data.user.avatar_url,
-              system_role: data.user.role === 'admin' ? 'admin' : 'user',
-            } : (existingProfile ? {
-              id: existingProfile.id,
-              email: existingProfile.email,
-              full_name: existingProfile.full_name,
-              avatar_url: existingProfile.avatar_url,
-              system_role: existingProfile.system_role,
-            } : undefined),
+            user_profile: prof ? {
+              id: prof.id,
+              email: prof.email,
+              full_name: prof.full_name,
+              avatar_url: prof.avatar_url,
+              system_role: prof.system_role,
+            } : undefined,
           };
         }
       } catch (err: any) {
