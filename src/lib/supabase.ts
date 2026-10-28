@@ -32,6 +32,23 @@ export function sanitizeUserId(id?: string | null): string {
   return DEMO_UUIDS.CARLOS;
 }
 
+export function isDemoAccount(userOrEmailOrId?: string | { email?: string; id?: string } | null): boolean {
+  if (!userOrEmailOrId) return false;
+  const email = typeof userOrEmailOrId === 'string' ? userOrEmailOrId.toLowerCase() : userOrEmailOrId.email?.toLowerCase() || '';
+  const id = typeof userOrEmailOrId === 'string' ? userOrEmailOrId : userOrEmailOrId.id || '';
+  return (
+    email === 'carlos.admin@planifika.app' ||
+    email === 'elena.editor@planifika.app' ||
+    email === 'david.viewer@planifika.app' ||
+    id === DEMO_UUIDS.CARLOS ||
+    id === DEMO_UUIDS.ELENA ||
+    id === DEMO_UUIDS.DAVID ||
+    id === 'usr-admin-carlos' ||
+    id === 'usr-editor-elena' ||
+    id === 'usr-viewer-david'
+  );
+}
+
 // Default demonstration profiles with valid PostgreSQL UUIDs matching supabase/schema.sql
 export const DEMO_PROFILES: UserProfile[] = [
   {
@@ -1104,31 +1121,82 @@ class PlanifikaDataService {
 
   // --- CALENDARS ---
   public async getCalendarsForUser(userId: string, userEmail?: string): Promise<Calendar[]> {
+    const store = this.getLocalStore();
+    const cleanUserId = sanitizeUserId(userId);
+    const resolvedUserId = this.supabase && this.isLiveConnected
+      ? await this.resolveSupabaseUserId(userId, userEmail)
+      : cleanUserId;
+
+    // Collect all candidate IDs and emails for this user
+    const candidateIds = new Set<string>([userId, cleanUserId, resolvedUserId]);
+    if (LEGACY_USER_ID_MAP[userId]) candidateIds.add(LEGACY_USER_ID_MAP[userId]);
+
+    const candidateEmails = new Set<string>();
+    if (userEmail) candidateEmails.add(userEmail.trim().toLowerCase());
+
+    // Discover matching IDs and emails from store.users and store.profiles
+    store.users.forEach((u) => {
+      if (candidateIds.has(u.id) || (u.email && candidateEmails.has(u.email.toLowerCase()))) {
+        candidateIds.add(u.id);
+        if (u.email) candidateEmails.add(u.email.toLowerCase());
+      }
+    });
+    store.profiles.forEach((p) => {
+      if (candidateIds.has(p.id) || (p.email && candidateEmails.has(p.email.toLowerCase()))) {
+        candidateIds.add(p.id);
+        if (p.email) candidateEmails.add(p.email.toLowerCase());
+      }
+    });
+
+    const isUserOwner = (ownerId?: string | null) => {
+      if (!ownerId) return false;
+      if (candidateIds.has(ownerId)) return true;
+      if (LEGACY_USER_ID_MAP[ownerId] && candidateIds.has(LEGACY_USER_ID_MAP[ownerId])) return true;
+      return false;
+    };
+
+    const hasLocalPerm = (calId: string): CalendarPermission | undefined => {
+      return store.permissions.find((p) => {
+        if (p.calendar_id !== calId) return false;
+        if (candidateIds.has(p.user_id)) return true;
+        if (p.user_profile?.email && candidateEmails.has(p.user_profile.email.toLowerCase())) return true;
+        const prof = store.profiles.find((pr) => pr.id === p.user_id);
+        if (prof?.email && candidateEmails.has(prof.email.toLowerCase())) return true;
+        const usr = store.users.find((u) => u.id === p.user_id);
+        if (usr?.email && candidateEmails.has(usr.email.toLowerCase())) return true;
+        return false;
+      });
+    };
+
+    let supabaseCalendars: Calendar[] = [];
     if (this.supabase && this.isLiveConnected) {
       try {
-        const resolvedUserId = await this.resolveSupabaseUserId(userId, userEmail);
-
-        // Query calendars with permissions - strictly filter only those where user is owner or invited member
         const { data, error } = await this.supabase
           .from('calendars')
-          .select('*, calendar_permissions(role, user_id)')
+          .select('*, calendar_permissions(role, user_id, user:users(id, email))')
           .order('created_at', { ascending: false });
 
         if (!error && data) {
-          const userCalendars = data
+          supabaseCalendars = data
             .filter((c: any) => {
-              const isOwner = c.owner_id === userId || c.owner_id === resolvedUserId;
-              const hasPerm = c.calendar_permissions?.some(
-                (p: any) => p.user_id === userId || p.user_id === resolvedUserId
-              );
-              return isOwner || hasPerm;
+              const isOwner = isUserOwner(c.owner_id);
+              const hasSupabasePerm = c.calendar_permissions?.some((p: any) => {
+                if (candidateIds.has(p.user_id)) return true;
+                if (p.user?.email && candidateEmails.has(p.user.email.toLowerCase())) return true;
+                return false;
+              });
+              const localPerm = hasLocalPerm(c.id);
+              return isOwner || hasSupabasePerm || !!localPerm;
             })
             .map((c: any) => {
-              const userPerm = c.calendar_permissions?.find(
-                (p: any) => p.user_id === userId || p.user_id === resolvedUserId
-              );
-              const isOwner = c.owner_id === userId || c.owner_id === resolvedUserId;
-              const role: UserRole = isOwner ? 'admin' : (userPerm?.role || 'viewer');
+              const isOwner = isUserOwner(c.owner_id);
+              const sbPerm = c.calendar_permissions?.find((p: any) => {
+                if (candidateIds.has(p.user_id)) return true;
+                if (p.user?.email && candidateEmails.has(p.user.email.toLowerCase())) return true;
+                return false;
+              });
+              const localPerm = hasLocalPerm(c.id);
+              const role: UserRole = isOwner ? 'admin' : (sbPerm?.role || localPerm?.role || 'viewer');
               return {
                 id: c.id,
                 name: c.name,
@@ -1140,42 +1208,33 @@ class PlanifikaDataService {
                 role,
               };
             });
-
-          // Combinar con calendarios locales guardados durante desconexión o bloqueo RLS
-          const store = this.getLocalStore();
-          const cleanUserId = sanitizeUserId(userId);
-          const localOnly = store.calendars.filter(
-            (lc) =>
-              (lc.owner_id === userId || lc.owner_id === resolvedUserId || lc.owner_id === cleanUserId) &&
-              !userCalendars.some((uc) => uc.id === lc.id)
-          );
-
-          return [...userCalendars, ...localOnly];
         }
       } catch (err) {
         console.warn('Fallback to local calendars', err);
       }
     }
 
-    const cleanUserId = sanitizeUserId(userId);
-    const store = this.getLocalStore();
-    return store.calendars
+    const localCalendars: Calendar[] = store.calendars
       .filter((cal) => {
-        if (cal.owner_id === userId || cal.owner_id === cleanUserId) return true;
-        return store.permissions.some(
-          (p) => p.calendar_id === cal.id && (p.user_id === userId || p.user_id === cleanUserId)
-        );
+        const isOwner = isUserOwner(cal.owner_id);
+        const localPerm = hasLocalPerm(cal.id);
+        return isOwner || !!localPerm;
       })
       .map((cal) => {
-        const perm = store.permissions.find(
-          (p) => p.calendar_id === cal.id && (p.user_id === userId || p.user_id === cleanUserId)
-        );
-        const role: UserRole = (cal.owner_id === userId || cal.owner_id === cleanUserId) ? 'admin' : (perm?.role || 'viewer');
+        const isOwner = isUserOwner(cal.owner_id);
+        const perm = hasLocalPerm(cal.id);
+        const role: UserRole = isOwner ? 'admin' : (perm?.role || 'viewer');
         return {
           ...cal,
           role,
         };
       });
+
+    const combinedMap = new Map<string, Calendar>();
+    localCalendars.forEach((c) => combinedMap.set(c.id, c));
+    supabaseCalendars.forEach((c) => combinedMap.set(c.id, c));
+
+    return Array.from(combinedMap.values());
   }
 
   public async createCalendar(
@@ -1419,6 +1478,11 @@ class PlanifikaDataService {
     const resolvedUserId = await this.resolveSupabaseUserId(userId);
     const resolvedGrantedBy = await this.resolveSupabaseUserId(grantedBy);
 
+    const store = this.getLocalStore();
+    const existingProfile = store.profiles.find((p) => p.id === userId || p.id === resolvedUserId)
+      || store.users.find((u) => u.id === userId || u.id === resolvedUserId);
+
+    let remotePerm: CalendarPermission | null = null;
     if (this.supabase && this.isLiveConnected) {
       try {
         const { data, error } = await this.supabase
@@ -1433,7 +1497,7 @@ class PlanifikaDataService {
           .single();
 
         if (!error && data) {
-          return {
+          remotePerm = {
             id: data.id,
             calendar_id: data.calendar_id,
             user_id: data.user_id,
@@ -1446,7 +1510,13 @@ class PlanifikaDataService {
               full_name: data.user.full_name,
               avatar_url: data.user.avatar_url,
               system_role: data.user.role === 'admin' ? 'admin' : 'user',
-            } : undefined,
+            } : (existingProfile ? {
+              id: existingProfile.id,
+              email: existingProfile.email,
+              full_name: existingProfile.full_name,
+              avatar_url: existingProfile.avatar_url,
+              system_role: existingProfile.system_role,
+            } : undefined),
           };
         }
       } catch (err) {
@@ -1454,40 +1524,71 @@ class PlanifikaDataService {
       }
     }
 
-    const store = this.getLocalStore();
+    const userProfileToSave: UserProfile | undefined = remotePerm?.user_profile || (existingProfile ? {
+      id: existingProfile.id,
+      email: existingProfile.email,
+      full_name: existingProfile.full_name,
+      avatar_url: existingProfile.avatar_url,
+      system_role: existingProfile.system_role,
+    } : undefined);
+
     const existingIdx = store.permissions.findIndex(
       (p) => p.calendar_id === calendarId && (p.user_id === userId || p.user_id === resolvedUserId)
     );
 
     if (existingIdx !== -1) {
       store.permissions[existingIdx].role = role;
+      if (userProfileToSave) {
+        store.permissions[existingIdx].user_profile = userProfileToSave;
+      }
       this.saveLocalStore(store);
-      return {
+      return remotePerm || {
         ...store.permissions[existingIdx],
-        user_profile: store.profiles.find((p) => p.id === userId || p.id === resolvedUserId),
+        user_profile: userProfileToSave,
       };
     } else {
       const newPerm: CalendarPermission = {
-        id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `perm-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+        id: remotePerm?.id || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `perm-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`),
         calendar_id: calendarId,
-        user_id: resolvedUserId,
+        user_id: resolvedUserId || userId,
         role,
-        granted_by: resolvedGrantedBy,
+        granted_by: resolvedGrantedBy || grantedBy,
         created_at: new Date().toISOString(),
+        user_profile: userProfileToSave,
       };
       store.permissions.push(newPerm);
       this.saveLocalStore(store);
-      return {
-        ...newPerm,
-        user_profile: store.profiles.find((p) => p.id === userId || p.id === resolvedUserId),
-      };
+      return remotePerm || newPerm;
     }
   }
 
-  public async removeCalendarPermission(calendarId: string, userId: string): Promise<void> {
-    const resolvedUserId = await this.resolveSupabaseUserId(userId);
+  public async removeCalendarPermission(calendarId: string, userId: string, permId?: string): Promise<void> {
+    const cleanUserId = sanitizeUserId(userId);
+    const resolvedUserId = this.supabase && this.isLiveConnected
+      ? await this.resolveSupabaseUserId(userId)
+      : cleanUserId;
+
+    const store = this.getLocalStore();
+    const candidateIds = new Set<string>([userId, cleanUserId, resolvedUserId]);
+    if (LEGACY_USER_ID_MAP[userId]) candidateIds.add(LEGACY_USER_ID_MAP[userId]);
+
+    // Discover associated emails and IDs
+    store.users.forEach((u) => {
+      if (candidateIds.has(u.id) && u.email) {
+        candidateIds.add(u.email.toLowerCase());
+      }
+    });
+    store.profiles.forEach((p) => {
+      if (candidateIds.has(p.id) && p.email) {
+        candidateIds.add(p.email.toLowerCase());
+      }
+    });
+
     if (this.supabase && this.isLiveConnected) {
       try {
+        if (permId && isUuid(permId)) {
+          await this.supabase.from('calendar_permissions').delete().eq('id', permId);
+        }
         await this.supabase
           .from('calendar_permissions')
           .delete()
@@ -1497,10 +1598,16 @@ class PlanifikaDataService {
         console.warn('Error removing permission from Supabase:', err);
       }
     }
-    const store = this.getLocalStore();
-    store.permissions = store.permissions.filter(
-      (p) => !(p.calendar_id === calendarId && (p.user_id === userId || p.user_id === resolvedUserId))
-    );
+
+    store.permissions = store.permissions.filter((p) => {
+      if (p.calendar_id !== calendarId) return true;
+      if (permId && p.id === permId) return false;
+      if (candidateIds.has(p.user_id)) return false;
+      if (p.user_profile?.id && candidateIds.has(p.user_profile.id)) return false;
+      if (p.user_profile?.email && candidateIds.has(p.user_profile.email.toLowerCase())) return false;
+      return true;
+    });
+
     this.saveLocalStore(store);
   }
 

@@ -92,13 +92,20 @@ export const PermissionsModal: React.FC = () => {
     }
   };
 
+  const [confirmRevokeId, setConfirmRevokeId] = useState<string | null>(null);
+  const [isRevoking, setIsRevoking] = useState(false);
+
   const handleRoleChange = async (userId: string, newRole: UserRole) => {
     await grantPermission(userId, newRole);
   };
 
-  const handleRevoke = async (userId: string) => {
-    if (confirm('¿Seguro que deseas remover el acceso a este usuario?')) {
-      await revokePermission(userId);
+  const handleRevoke = async (userId: string, permId: string) => {
+    setIsRevoking(true);
+    try {
+      await revokePermission(userId, permId);
+      setConfirmRevokeId(null);
+    } finally {
+      setIsRevoking(false);
     }
   };
 
@@ -286,14 +293,37 @@ export const PermissionsModal: React.FC = () => {
                           </span>
                         )}
 
-                        {isAdmin && (
-                          <button
-                            onClick={() => handleRevoke(perm.user_id)}
-                            className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
-                            title="Revocar acceso"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
+                        {confirmRevokeId === perm.id ? (
+                          <div className="flex items-center gap-1.5 animate-in fade-in">
+                            <span className="text-[11px] text-rose-600 font-semibold hidden sm:inline">¿Revocar?</span>
+                            <button
+                              type="button"
+                              disabled={isRevoking}
+                              onClick={() => handleRevoke(perm.user_id, perm.id)}
+                              className="px-2.5 py-1 text-[11px] font-bold text-white bg-rose-600 hover:bg-rose-700 active:scale-95 rounded-lg transition-all cursor-pointer shadow-2xs disabled:opacity-50"
+                            >
+                              {isRevoking ? 'Revocando...' : 'Sí, revocar'}
+                            </button>
+                            <button
+                              type="button"
+                              disabled={isRevoking}
+                              onClick={() => setConfirmRevokeId(null)}
+                              className="px-2 py-1 text-[11px] font-medium text-slate-600 hover:bg-slate-200 rounded-lg transition-colors cursor-pointer"
+                            >
+                              Cancelar
+                            </button>
+                          </div>
+                        ) : (
+                          isAdmin && (
+                            <button
+                              type="button"
+                              onClick={() => setConfirmRevokeId(perm.id)}
+                              className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                              title="Revocar acceso de este colaborador"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )
                         )}
                       </div>
                     </div>

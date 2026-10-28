@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
+import { UserProfile } from '../types';
+import { isDemoAccount, planifikaService } from '../lib/supabase';
 import {
   CalendarDays,
   History,
@@ -14,13 +16,19 @@ import {
   ChevronDown,
   UserCheck,
   LogOut,
+  Lock,
+  EyeOff,
+  X,
+  KeyRound,
 } from 'lucide-react';
 
 export const Navbar: React.FC = () => {
   const {
     currentUser,
+    setCurrentUser,
     switchDemoUser,
     logout,
+    showToast,
     allProfiles,
     loadProfiles,
     activeCalendar,
@@ -37,6 +45,55 @@ export const Navbar: React.FC = () => {
   } = useApp();
 
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const [authPromptProfile, setAuthPromptProfile] = useState<UserProfile | null>(null);
+  const [authPassword, setAuthPassword] = useState('');
+  const [showAuthPassword, setShowAuthPassword] = useState(false);
+  const [authError, setAuthError] = useState('');
+  const [isAuthenticating, setIsAuthenticating] = useState(false);
+
+  const handleSwitchProfile = (profile: UserProfile) => {
+    if (profile.id === currentUser?.id) {
+      setIsUserMenuOpen(false);
+      return;
+    }
+    if (isDemoAccount(profile)) {
+      switchDemoUser(profile.id);
+      setIsUserMenuOpen(false);
+    } else {
+      setIsUserMenuOpen(false);
+      setAuthPromptProfile(profile);
+      setAuthPassword('');
+      setAuthError('');
+      setShowAuthPassword(false);
+    }
+  };
+
+  const handleConfirmAuthSwitch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!authPromptProfile) return;
+    if (!authPassword) {
+      setAuthError('Por favor introduce la contraseña.');
+      return;
+    }
+    setIsAuthenticating(true);
+    setAuthError('');
+    try {
+      const res = await planifikaService.authenticateUser(authPromptProfile.email, authPassword);
+      if (res.success && res.user) {
+        setCurrentUser(res.user);
+        localStorage.setItem('planifika_active_user_id', res.user.id);
+        showToast(`Sesión cambiada a: ${res.user.full_name}`, 'success');
+        setAuthPromptProfile(null);
+        setAuthPassword('');
+      } else {
+        setAuthError(res.error || 'Contraseña incorrecta. Inténtalo de nuevo.');
+      }
+    } catch (err: any) {
+      setAuthError(err?.message || 'Error al validar credenciales.');
+    } finally {
+      setIsAuthenticating(false);
+    }
+  };
 
   const roleBadge = () => {
     if (!activeCalendar) {
@@ -93,9 +150,12 @@ export const Navbar: React.FC = () => {
               <div className="w-8 h-8 rounded-lg bg-slate-900 text-white flex items-center justify-center font-bold text-sm tracking-tighter">
                 P
               </div>
-              <div>
+              <div className="flex items-center gap-1.5">
                 <span className="text-lg font-extrabold tracking-tight text-slate-900 group-hover:text-slate-700 transition-colors">
                   Planifika
+                </span>
+                <span className="text-[10px] font-mono font-bold bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded border border-slate-200">
+                  v1.0.12
                 </span>
               </div>
             </button>
@@ -240,51 +300,113 @@ export const Navbar: React.FC = () => {
                     </div>
                   </div>
 
+                  {/* Group 1: Demo Profiles (1-click test) */}
                   <div className="px-3 py-1.5 text-[11px] font-semibold text-slate-400 uppercase tracking-wider flex items-center justify-between">
-                    <span>Cambiar usuario ({allProfiles.length} en el sistema)</span>
-                    <span className="text-[9px] text-slate-400 font-normal lowercase">probar RLS</span>
+                    <span>Usuarios demo ({allProfiles.filter((p) => isDemoAccount(p)).length})</span>
+                    <span className="text-[9px] text-emerald-600 font-bold bg-emerald-50 border border-emerald-200/80 px-1 rounded">1 clic</span>
                   </div>
 
-                  <div className="space-y-1 max-h-60 overflow-y-auto">
-                    {allProfiles.map((profile) => {
-                      const isSelected = profile.id === currentUser?.id;
-                      const isAdminProf = profile.system_role === 'admin';
-                      return (
-                        <button
-                          key={profile.id}
-                          onClick={() => {
-                            switchDemoUser(profile.id);
-                            setIsUserMenuOpen(false);
-                          }}
-                          className={`w-full flex items-center justify-between px-3 py-2 text-xs rounded-lg transition-colors text-left ${
-                            isSelected
-                              ? 'bg-slate-100 font-medium text-slate-950'
-                              : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
-                          }`}
-                        >
-                          <div className="flex items-center gap-2 truncate pr-2">
-                            <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${
-                              isAdminProf ? 'bg-amber-100 text-amber-800' : 'bg-slate-200 text-slate-700'
-                            }`}>
-                              {profile.full_name.charAt(0)}
-                            </div>
-                            <div className="truncate">
-                              <div className="flex items-center gap-1.5">
-                                <p className="truncate text-xs font-semibold text-slate-900">{profile.full_name}</p>
-                                <span className={`text-[9px] px-1 py-0.2 rounded font-semibold shrink-0 ${
-                                  isAdminProf ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-500'
-                                }`}>
-                                  {isAdminProf ? 'Admin' : 'Usuario'}
-                                </span>
+                  <div className="space-y-1">
+                    {allProfiles
+                      .filter((p) => isDemoAccount(p))
+                      .map((profile) => {
+                        const isSelected = profile.id === currentUser?.id;
+                        const isAdminProf = profile.system_role === 'admin';
+                        return (
+                          <button
+                            key={profile.id}
+                            onClick={() => handleSwitchProfile(profile)}
+                            className={`w-full flex items-center justify-between px-3 py-2 text-xs rounded-lg transition-colors text-left cursor-pointer ${
+                              isSelected
+                                ? 'bg-slate-100 font-medium text-slate-950'
+                                : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2 truncate pr-2">
+                              <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${
+                                isAdminProf ? 'bg-amber-100 text-amber-800' : 'bg-slate-200 text-slate-700'
+                              }`}>
+                                {profile.full_name.charAt(0)}
                               </div>
-                              <p className="text-[10px] text-slate-400 truncate">{profile.email}</p>
+                              <div className="truncate">
+                                <div className="flex items-center gap-1.5">
+                                  <p className="truncate text-xs font-semibold text-slate-900">{profile.full_name}</p>
+                                  <span className={`text-[9px] px-1 py-0.2 rounded font-semibold shrink-0 ${
+                                    isAdminProf ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-500'
+                                  }`}>
+                                    {isAdminProf ? 'Admin' : 'Usuario'}
+                                  </span>
+                                </div>
+                                <p className="text-[10px] text-slate-400 truncate">{profile.email}</p>
+                              </div>
                             </div>
-                          </div>
-                          {isSelected && <UserCheck className="w-4 h-4 text-emerald-600 shrink-0" />}
-                        </button>
-                      );
-                    })}
+                            {isSelected ? (
+                              <UserCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                            ) : (
+                              <span className="text-[10px] text-slate-400">Demo</span>
+                            )}
+                          </button>
+                        );
+                      })}
                   </div>
+
+                  {/* Group 2: Registered Profiles (Require Password) */}
+                  {allProfiles.some((p) => !isDemoAccount(p)) && (
+                    <>
+                      <div className="mt-2 pt-2 border-t border-slate-100 px-3 py-1 text-[11px] font-semibold text-slate-400 uppercase tracking-wider flex items-center justify-between">
+                        <span>Usuarios registrados ({allProfiles.filter((p) => !isDemoAccount(p)).length})</span>
+                        <span className="text-[9px] text-slate-500 font-normal flex items-center gap-0.5">
+                          <Lock className="w-2.5 h-2.5" /> Clave req.
+                        </span>
+                      </div>
+
+                      <div className="space-y-1 max-h-40 overflow-y-auto">
+                        {allProfiles
+                          .filter((p) => !isDemoAccount(p))
+                          .map((profile) => {
+                            const isSelected = profile.id === currentUser?.id;
+                            const isAdminProf = profile.system_role === 'admin';
+                            return (
+                              <button
+                                key={profile.id}
+                                onClick={() => handleSwitchProfile(profile)}
+                                className={`w-full flex items-center justify-between px-3 py-2 text-xs rounded-lg transition-colors text-left cursor-pointer ${
+                                  isSelected
+                                    ? 'bg-slate-100 font-medium text-slate-950'
+                                    : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                                }`}
+                              >
+                                <div className="flex items-center gap-2 truncate pr-2">
+                                  <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold shrink-0 ${
+                                    isAdminProf ? 'bg-amber-100 text-amber-800' : 'bg-slate-200 text-slate-700'
+                                  }`}>
+                                    {profile.full_name.charAt(0)}
+                                  </div>
+                                  <div className="truncate">
+                                    <div className="flex items-center gap-1.5">
+                                      <p className="truncate text-xs font-semibold text-slate-900">{profile.full_name}</p>
+                                      <span className={`text-[9px] px-1 py-0.2 rounded font-semibold shrink-0 ${
+                                        isAdminProf ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-500'
+                                      }`}>
+                                        {isAdminProf ? 'Admin' : 'Usuario'}
+                                      </span>
+                                    </div>
+                                    <p className="text-[10px] text-slate-400 truncate">{profile.email}</p>
+                                  </div>
+                                </div>
+                                {isSelected ? (
+                                  <UserCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                                ) : (
+                                  <span title="Requiere contraseña">
+                                    <Lock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                  </span>
+                                )}
+                              </button>
+                            );
+                          })}
+                      </div>
+                    </>
+                  )}
 
                   <div className="mt-2 pt-2 border-t border-slate-100 space-y-0.5">
                     <button
@@ -330,6 +452,110 @@ export const Navbar: React.FC = () => {
 
         </div>
       </div>
+
+      {/* Password verification modal when switching to a registered user */}
+      {authPromptProfile && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-in fade-in">
+          <div className="bg-white w-full max-w-sm rounded-2xl shadow-2xl border border-slate-200 overflow-hidden animate-in zoom-in-95">
+            <div className="flex items-center justify-between p-4 border-b border-slate-100 bg-slate-50">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-slate-900 text-white flex items-center justify-center">
+                  <KeyRound className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-xs font-bold text-slate-900">Validar Contraseña</h3>
+                  <p className="text-[10px] text-slate-500">Cambio de cuenta registrada</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthPromptProfile(null);
+                  setAuthPassword('');
+                  setAuthError('');
+                }}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-200/50 transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleConfirmAuthSwitch} className="p-4 space-y-4">
+              <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200/80">
+                <div className="w-9 h-9 rounded-full bg-slate-200 text-slate-700 flex items-center justify-center font-bold text-sm shrink-0 overflow-hidden">
+                  {authPromptProfile.avatar_url ? (
+                    <img
+                      src={authPromptProfile.avatar_url}
+                      alt={authPromptProfile.full_name}
+                      referrerPolicy="no-referrer"
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    authPromptProfile.full_name.charAt(0)
+                  )}
+                </div>
+                <div className="truncate">
+                  <p className="text-xs font-bold text-slate-900 truncate">{authPromptProfile.full_name}</p>
+                  <p className="text-[11px] text-slate-500 truncate">{authPromptProfile.email}</p>
+                </div>
+              </div>
+
+              {authError && (
+                <div className="p-2.5 bg-rose-50 border border-rose-200 text-rose-700 text-xs rounded-xl leading-tight">
+                  {authError}
+                </div>
+              )}
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Introduce la contraseña de esta cuenta:
+                </label>
+                <div className="relative">
+                  <input
+                    type={showAuthPassword ? 'text' : 'password'}
+                    required
+                    autoFocus
+                    placeholder="Contraseña del usuario..."
+                    value={authPassword}
+                    onChange={(e) => setAuthPassword(e.target.value)}
+                    className="w-full pl-9 pr-9 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900 focus:bg-white transition-all"
+                  />
+                  <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                  <button
+                    type="button"
+                    onClick={() => setShowAuthPassword(!showAuthPassword)}
+                    className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-700 cursor-pointer"
+                    title={showAuthPassword ? 'Ocultar' : 'Ver'}
+                  >
+                    {showAuthPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAuthPromptProfile(null);
+                    setAuthPassword('');
+                    setAuthError('');
+                  }}
+                  className="w-1/2 py-2 px-3 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition-all cursor-pointer text-center"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={isAuthenticating}
+                  className="w-1/2 py-2 px-3 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-xl transition-all cursor-pointer text-center disabled:opacity-50"
+                >
+                  {isAuthenticating ? 'Comprobando...' : 'Acceder'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </header>
   );
 };

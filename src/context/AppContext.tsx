@@ -16,7 +16,7 @@ import {
   getWeekInfo,
   parseISODate,
 } from '../utils/dateUtils';
-import { DEMO_PROFILES, LEGACY_USER_ID_MAP, planifikaService } from '../lib/supabase';
+import { DEMO_PROFILES, LEGACY_USER_ID_MAP, isDemoAccount, planifikaService } from '../lib/supabase';
 
 interface ToastData {
   id: number;
@@ -62,7 +62,7 @@ interface AppContextType {
     title: string;
     description: string;
     color: TaskColorId;
-    day_of_week: DayOfWeek;
+    day_of_week: DayOfWeek | DayOfWeek[];
     status?: TaskStatus;
     time_estimate?: string;
   }) => Promise<boolean>;
@@ -89,7 +89,7 @@ interface AppContextType {
   permissions: CalendarPermission[];
   loadPermissions: () => Promise<void>;
   grantPermission: (userId: string, role: UserRole) => Promise<void>;
-  revokePermission: (userId: string) => Promise<void>;
+  revokePermission: (userId: string, permId?: string) => Promise<void>;
 
   // UI state & Modals
   activeTab: 'weekly' | 'history' | 'calendars' | 'settings';
@@ -387,7 +387,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     title: string;
     description: string;
     color: TaskColorId;
-    day_of_week: DayOfWeek;
+    day_of_week: DayOfWeek | DayOfWeek[];
     status?: TaskStatus;
     time_estimate?: string;
   }) => {
@@ -400,25 +400,39 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return false;
     }
 
-    const currentDayTasks = tasks.filter((t) => t.day_of_week === data.day_of_week);
-    const position = currentDayTasks.length;
+    // Enforce 20 card limit for demo users
+    if (isDemoAccount(currentUser)) {
+      const allCalTasks = await planifikaService.getAllTasksForCalendar(activeCalendarId);
+      const daysToAddCount = Array.isArray(data.day_of_week) ? data.day_of_week.length : 1;
+      if (allCalTasks.length + daysToAddCount > 20) {
+        showToast(`Límite de cuenta demo: Máximo 20 tarjetas por calendario (actuales: ${allCalTasks.length}).`, 'error');
+        return false;
+      }
+    }
+
+    const daysList = Array.isArray(data.day_of_week) ? data.day_of_week : [data.day_of_week];
 
     try {
-      await planifikaService.createTask({
-        calendar_id: activeCalendarId,
-        title: data.title,
-        description: data.description,
-        color: data.color,
-        day_of_week: data.day_of_week,
-        status: data.status || 'pending',
-        week_start_date: selectedWeekStart,
-        time_estimate: data.time_estimate || '',
-        position,
-        created_by: currentUser.id,
-      });
+      for (const day of daysList) {
+        const currentDayTasks = tasks.filter((t) => t.day_of_week === day);
+        const position = currentDayTasks.length;
+
+        await planifikaService.createTask({
+          calendar_id: activeCalendarId,
+          title: data.title,
+          description: data.description,
+          color: data.color,
+          day_of_week: day,
+          status: data.status || 'pending',
+          week_start_date: selectedWeekStart,
+          time_estimate: data.time_estimate || '',
+          position,
+          created_by: currentUser.id,
+        });
+      }
 
       await loadTasks();
-      showToast('Tarea creada con éxito', 'success');
+      showToast(daysList.length > 1 ? `Tarea repetitiva creada en ${daysList.length} días` : 'Tarea creada con éxito', 'success');
       return true;
     } catch (e: any) {
       showToast(`Error al crear la tarea: ${e.message}`, 'error');
@@ -574,6 +588,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     colorTheme: 'blue' | 'emerald' | 'indigo' | 'violet' | 'amber'
   ) => {
     if (!currentUser) throw new Error('Usuario no autenticado');
+
+    // Limit demo / test users to only 1 calendar
+    if (isDemoAccount(currentUser) && calendars.length >= 1) {
+      showToast('Límite de cuenta demo: Los usuarios de prueba solo pueden tener 1 calendario.', 'error');
+      throw new Error('Límite de cuenta demo: Solo se permite 1 calendario.');
+    }
+
     if (currentUser.system_role !== 'admin') {
       showToast('Permiso denegado: Solo los usuarios con rol Administrador pueden crear calendarios.', 'error');
       throw new Error('Solo los administradores pueden crear calendarios');
@@ -597,7 +618,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       showToast(err?.message || 'Error al crear el calendario', 'error');
       throw err;
     }
-  }, [currentUser, loadCalendars, showToast]);
+  }, [currentUser, calendars.length, loadCalendars, showToast]);
 
   const updateCalendar = useCallback(async (id: string, updates: Partial<Calendar>) => {
     if (!isAdmin) {
@@ -630,15 +651,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     showToast('Permisos actualizados para el usuario', 'success');
   }, [isAdmin, currentUser, activeCalendarId, loadPermissions, showToast]);
 
-  const revokePermission = useCallback(async (userId: string) => {
+  const revokePermission = useCallback(async (userId: string, permId?: string) => {
     if (!isAdmin) {
       showToast('Solo el administrador puede revocar permisos', 'error');
       return;
     }
-    await planifikaService.removeCalendarPermission(activeCalendarId, userId);
+    await planifikaService.removeCalendarPermission(activeCalendarId, userId, permId);
     await loadPermissions();
-    showToast('Permiso revocado', 'info');
-  }, [isAdmin, activeCalendarId, loadPermissions, showToast]);
+    await loadCalendars();
+    showToast('Acceso revocado correctamente', 'info');
+  }, [isAdmin, activeCalendarId, loadPermissions, loadCalendars, showToast]);
 
   // Supabase Credentials Config
   const saveSupabaseCredentials = useCallback(async (url: string, key: string) => {

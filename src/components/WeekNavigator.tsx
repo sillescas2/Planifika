@@ -126,43 +126,45 @@ export const WeekNavigator: React.FC = () => {
             <span className="text-slate-500 font-mono tabular-nums">Semana {currentWeekInfo.weekNumber}</span>
           </div>
 
-          {/* KPI progress */}
-          <div className="flex items-center gap-3 text-slate-500">
-            <div className="flex items-center gap-1.5">
-              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-              <span className="font-mono tabular-nums font-medium text-slate-900">{completedTasks}</span>
-              <span className="hidden sm:inline">completadas</span>
-            </div>
-
-            {partialTasks > 0 && (
+          {/* KPI progress (only shown if there is an active calendar) */}
+          {activeCalendar && (
+            <div className="flex items-center gap-3 text-slate-500">
               <div className="flex items-center gap-1.5">
-                <Clock className="w-3.5 h-3.5 text-sky-600" />
-                <span className="font-mono tabular-nums font-medium text-slate-900">{partialTasks}</span>
-                <span className="hidden sm:inline">en progreso</span>
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                <span className="font-mono tabular-nums font-medium text-slate-900">{completedTasks}</span>
+                <span className="hidden sm:inline">completadas</span>
               </div>
-            )}
 
-            <div className="flex items-center gap-1.5">
-              <span className="font-mono tabular-nums font-medium text-slate-900">{pendingTasks}</span>
-              <span className="hidden sm:inline">pendientes</span>
-            </div>
+              {partialTasks > 0 && (
+                <div className="flex items-center gap-1.5">
+                  <Clock className="w-3.5 h-3.5 text-sky-600" />
+                  <span className="font-mono tabular-nums font-medium text-slate-900">{partialTasks}</span>
+                  <span className="hidden sm:inline">en progreso</span>
+                </div>
+              )}
 
-            {noteTasks > 0 && (
-              <div className="flex items-center gap-1.5 text-slate-500">
-                <FileText className="w-3.5 h-3.5 text-slate-400" />
-                <span className="font-mono tabular-nums font-medium text-slate-700">{noteTasks}</span>
-                <span className="hidden sm:inline">notas</span>
+              <div className="flex items-center gap-1.5">
+                <span className="font-mono tabular-nums font-medium text-slate-900">{pendingTasks}</span>
+                <span className="hidden sm:inline">pendientes</span>
               </div>
-            )}
 
-            <div className="w-16 sm:w-24 bg-slate-200 h-1.5 rounded-full overflow-hidden">
-              <div
-                className="bg-emerald-600 h-full rounded-full transition-all duration-300"
-                style={{ width: `${progressPercent}%` }}
-              />
+              {noteTasks > 0 && (
+                <div className="flex items-center gap-1.5 text-slate-500">
+                  <FileText className="w-3.5 h-3.5 text-slate-400" />
+                  <span className="font-mono tabular-nums font-medium text-slate-700">{noteTasks}</span>
+                  <span className="hidden sm:inline">notas</span>
+                </div>
+              )}
+
+              <div className="w-16 sm:w-24 bg-slate-200 h-1.5 rounded-full overflow-hidden">
+                <div
+                  className="bg-emerald-600 h-full rounded-full transition-all duration-300"
+                  style={{ width: `${progressPercent}%` }}
+                />
+              </div>
+              <span className="font-mono tabular-nums text-slate-700 font-semibold">{progressPercent}%</span>
             </div>
-            <span className="font-mono tabular-nums text-slate-700 font-semibold">{progressPercent}%</span>
-          </div>
+          )}
 
         </div>
 

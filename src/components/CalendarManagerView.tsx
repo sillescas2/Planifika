@@ -49,10 +49,11 @@ export const CalendarManagerView: React.FC = () => {
     }
   };
 
-  const handleDelete = async (id: string, calName: string) => {
-    if (confirm(`¿Estás seguro de que deseas eliminar permanentemente el calendario "${calName}"? Se borrarán todas sus tareas y permisos.`)) {
-      await deleteCalendar(id);
-    }
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+
+  const handleDelete = async (id: string) => {
+    await deleteCalendar(id);
+    setDeleteConfirmId(null);
   };
 
   return (
@@ -288,13 +289,34 @@ export const CalendarManagerView: React.FC = () => {
                       </button>
 
                       {calendars.length > 1 && (
-                        <button
-                          onClick={() => handleDelete(cal.id, cal.name)}
-                          className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors"
-                          title="Eliminar calendario"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                        deleteConfirmId === cal.id ? (
+                          <div className="flex items-center gap-1 bg-rose-50 border border-rose-200/80 px-1.5 py-0.5 rounded-lg">
+                            <span className="text-[10px] text-rose-700 font-semibold">¿Borrar?</span>
+                            <button
+                              type="button"
+                              onClick={() => handleDelete(cal.id)}
+                              className="px-1.5 py-0.5 text-[10px] font-bold text-white bg-rose-600 hover:bg-rose-700 rounded transition-colors cursor-pointer"
+                            >
+                              Sí
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setDeleteConfirmId(null)}
+                              className="px-1 py-0.5 text-[10px] text-slate-600 hover:bg-slate-200 rounded transition-colors cursor-pointer"
+                            >
+                              No
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setDeleteConfirmId(cal.id)}
+                            className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                            title="Eliminar calendario"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )
                       )}
                     </>
                   )}

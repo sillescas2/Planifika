@@ -30,7 +30,7 @@ export const TaskModal: React.FC = () => {
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [dayOfWeek, setDayOfWeek] = useState<DayOfWeek>('lunes');
+  const [dayOfWeek, setDayOfWeek] = useState<DayOfWeek | DayOfWeek[]>('lunes');
   const [color, setColor] = useState<TaskColorId>('sky');
   const [timeEstimate, setTimeEstimate] = useState('');
   const [status, setStatus] = useState<TaskStatus>('pending');
@@ -53,7 +53,7 @@ export const TaskModal: React.FC = () => {
     } else {
       setTitle('');
       setDescription('');
-      setDayOfWeek(taskDefaultDay);
+      setDayOfWeek([taskDefaultDay]);
       setColor('sky');
       setTimeEstimate('');
       setStatus('pending');
@@ -157,7 +157,7 @@ export const TaskModal: React.FC = () => {
         const res = await updateTask(taskToEdit.id, {
           title: title.trim(),
           description: description.trim(),
-          day_of_week: dayOfWeek,
+          day_of_week: Array.isArray(dayOfWeek) ? dayOfWeek[0] : dayOfWeek,
           color,
           time_estimate: timeEstimate.trim(),
           ...(isAdmin ? { status } : {}),
@@ -327,20 +327,53 @@ export const TaskModal: React.FC = () => {
           {/* Row: Day of Week & Time Estimate */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Día asignado
+              <label className="block text-xs font-semibold text-slate-700 mb-1 flex items-center justify-between">
+                <span>Días asignados (Selecciona uno o más)</span>
+                {taskToEdit && <span className="text-[10px] text-slate-400 font-normal">Edición (1 día)</span>}
               </label>
-              <select
-                value={dayOfWeek}
-                onChange={(e) => setDayOfWeek(e.target.value as DayOfWeek)}
-                className="w-full px-3.5 py-2 text-sm bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition-all"
-              >
-                {DAYS_OF_WEEK.map((d) => (
-                  <option key={d.key} value={d.key}>
-                    {d.label}
-                  </option>
-                ))}
-              </select>
+
+              {taskToEdit ? (
+                <select
+                  value={Array.isArray(dayOfWeek) ? dayOfWeek[0] : dayOfWeek}
+                  onChange={(e) => setDayOfWeek(e.target.value as DayOfWeek)}
+                  className="w-full px-3.5 py-2 text-sm bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition-all"
+                >
+                  {DAYS_OF_WEEK.map((d) => (
+                    <option key={d.key} value={d.key}>
+                      {d.label}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <div className="grid grid-cols-4 gap-1.5 pt-0.5">
+                  {DAYS_OF_WEEK.map((d) => {
+                    const selectedList = Array.isArray(dayOfWeek) ? dayOfWeek : [dayOfWeek];
+                    const isSelected = selectedList.includes(d.key);
+                    return (
+                      <button
+                        key={d.key}
+                        type="button"
+                        onClick={() => {
+                          if (isSelected) {
+                            if (selectedList.length > 1) {
+                              setDayOfWeek(selectedList.filter((item) => item !== d.key));
+                            }
+                          } else {
+                            setDayOfWeek([...selectedList, d.key]);
+                          }
+                        }}
+                        className={`py-1.5 px-2 text-xs font-semibold rounded-lg border transition-all text-center cursor-pointer ${
+                          isSelected
+                            ? 'bg-slate-900 text-white border-slate-900 shadow-2xs'
+                            : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                        }`}
+                      >
+                        {d.label.slice(0, 3)}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
 
             <div>

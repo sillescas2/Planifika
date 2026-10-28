@@ -153,19 +153,19 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onSuccess }) => {
             <div className="flex items-center justify-between">
               <span className="text-[11px] font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
                 <Shield className="w-3.5 h-3.5 text-slate-700" />
-                <span>Acceso rápido por perfiles:</span>
+                <span>Usuarios de prueba demo:</span>
               </span>
               <span className="text-[10px] bg-slate-200/70 text-slate-700 font-semibold px-1.5 py-0.2 rounded">
-                1 Clic
+                1 Clic (Solo demo)
               </span>
             </div>
             
             <p className="text-[11px] text-slate-500 leading-tight">
-              Entra directamente para comprobar los permisos de visualización, edición y restricciones de administración:
+              Acceso directo para verificar permisos de visualización, edición y administración:
             </p>
 
-            <div className="space-y-1.5 pt-1 max-h-56 overflow-y-auto pr-0.5">
-              {allProfiles.map((p) => {
+            <div className="space-y-1.5 pt-1">
+              {DEMO_PROFILES.map((p) => {
                 const isAdmin = p.system_role === 'admin';
                 return (
                   <button
@@ -196,8 +196,8 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onSuccess }) => {
             </div>
 
             <div className="p-2 bg-slate-100/80 rounded-lg text-[10px] text-slate-600 flex items-center justify-between">
-              <span>Gestión 100% en tabla <strong className="text-slate-900">users</strong> (sin Supabase Auth)</span>
-              <span className="bg-white px-1.5 py-0.5 rounded border border-slate-200 font-mono text-[9px] text-slate-700">Clave: password123</span>
+              <span>Gestión 100% en tabla <strong className="text-slate-900">users</strong></span>
+              <span className="bg-white px-1.5 py-0.5 rounded border border-slate-200 font-mono text-[9px] text-slate-700">Clave demo: password123</span>
             </div>
           </div>
 
