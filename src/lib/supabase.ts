@@ -1174,31 +1174,23 @@ class PlanifikaDataService {
       try {
         const { data, error } = await this.supabase
           .from('calendars')
-          .select('*, owner:users!owner_id(id, email), calendar_permissions(role, user_id, user:users(id, email))')
+          .select('*, calendar_permissions(role, user_id)')
           .order('created_at', { ascending: false });
 
         if (!error && data) {
           supabaseCalendars = data
             .filter((c: any) => {
-              const isOwner =
-                isUserOwner(c.owner_id) ||
-                (c.owner?.email && candidateEmails.has(c.owner.email.toLowerCase()));
+              const isOwner = isUserOwner(c.owner_id) || c.owner_id === resolvedUserId;
               const hasSupabasePerm = c.calendar_permissions?.some((p: any) => {
-                if (candidateIds.has(p.user_id)) return true;
-                if (p.user?.email && candidateEmails.has(p.user.email.toLowerCase())) return true;
-                return false;
+                return candidateIds.has(p.user_id) || p.user_id === resolvedUserId;
               });
               const localPerm = hasLocalPerm(c.id);
               return isOwner || hasSupabasePerm || !!localPerm;
             })
             .map((c: any) => {
-              const isOwner =
-                isUserOwner(c.owner_id) ||
-                (c.owner?.email && candidateEmails.has(c.owner.email.toLowerCase()));
+              const isOwner = isUserOwner(c.owner_id) || c.owner_id === resolvedUserId;
               const sbPerm = c.calendar_permissions?.find((p: any) => {
-                if (candidateIds.has(p.user_id)) return true;
-                if (p.user?.email && candidateEmails.has(p.user.email.toLowerCase())) return true;
-                return false;
+                return candidateIds.has(p.user_id) || p.user_id === resolvedUserId;
               });
               const localPerm = hasLocalPerm(c.id);
               const role: UserRole = isOwner ? 'admin' : (sbPerm?.role || localPerm?.role || 'viewer');

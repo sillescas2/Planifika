@@ -118,11 +118,12 @@ interface AppContextType {
   toast: ToastData | null;
   showToast: (message: string, type?: 'success' | 'error' | 'info') => void;
 
-  // Connection
+  // Connection & Sync
   isLiveConnected: boolean;
   supabaseCredentials: { url: string; anonKey: string };
   saveSupabaseCredentials: (url: string, key: string) => Promise<{ success: boolean; message: string }>;
   resetDemoData: () => void;
+  refreshAllData: () => Promise<void>;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
@@ -135,15 +136,22 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return null;
     }
     const resolvedSaved = (saved && LEGACY_USER_ID_MAP[saved]) ? LEGACY_USER_ID_MAP[saved] : (saved || '');
-    if (saved && resolvedSaved && resolvedSaved !== saved) {
-      try {
-        localStorage.setItem('planifika_active_user_id', resolvedSaved);
-      } catch (e) {
-        // ignore
+
+    let pool: UserProfile[] = [...DEMO_PROFILES];
+    try {
+      const rawStore = localStorage.getItem('planifika_local_store');
+      if (rawStore) {
+        const parsed = JSON.parse(rawStore);
+        if (parsed.profiles) {
+          pool = [...parsed.profiles, ...DEMO_PROFILES];
+        }
       }
-    }
-    const matched = DEMO_PROFILES.find((p) => p.id === resolvedSaved);
-    return matched || DEMO_PROFILES[0]; // Default: Carlos (Admin)
+    } catch (e) {}
+
+    const matched = pool.find(
+      (p) => p.id === resolvedSaved || (saved && (p.id === saved || p.email.toLowerCase() === saved.toLowerCase()))
+    );
+    return matched || DEMO_PROFILES[0];
   });
   const [allProfiles, setAllProfiles] = useState<UserProfile[]>(DEMO_PROFILES);
 
@@ -206,11 +214,71 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return getWeekInfo(d);
   }, [selectedWeekStart]);
 
-  // Load profiles
+  // Load profiles and sync active currentUser with real Supabase profile
   const loadProfiles = useCallback(async () => {
     const profiles = await planifikaService.getProfiles();
     setAllProfiles(profiles);
-  }, []);
+
+    const savedId = localStorage.getItem('planifika_active_user_id');
+    if (savedId && savedId !== 'logged_out') {
+      const activeMatch = profiles.find(
+        (p) => p.id === savedId || p.email.toLowerCase() === savedId.toLowerCase() || (currentUser && p.email.toLowerCase() === currentUser.email.toLowerCase())
+      );
+      if (activeMatch) {
+        setCurrentUser(activeMatch);
+      }
+    }
+  }, [currentUser]);
+
+  // Full manual refresh from Supabase database
+  const refreshAllData = useCallback(async () => {
+    setLoadingTasks(true);
+    try {
+      const freshProfiles = await planifikaService.getProfiles();
+      setAllProfiles(freshProfiles);
+
+      const savedId = localStorage.getItem('planifika_active_user_id');
+      let activeUser = currentUser;
+      if (savedId && savedId !== 'logged_out') {
+        const matched = freshProfiles.find(
+          (p) => p.id === savedId || p.email.toLowerCase() === savedId.toLowerCase() || (currentUser && p.email.toLowerCase() === currentUser.email.toLowerCase())
+        );
+        if (matched) {
+          activeUser = matched;
+          setCurrentUser(matched);
+        }
+      }
+
+      if (activeUser) {
+        const cals = await planifikaService.getCalendarsForUser(activeUser.id, activeUser.email);
+        setCalendars(cals);
+
+        if (cals.length > 0) {
+          const targetCalId = activeCalendarId && cals.some((c) => c.id === activeCalendarId) ? activeCalendarId : cals[0].id;
+          setActiveCalendarId(targetCalId);
+
+          const [perms, weekTasks, allTasks] = await Promise.all([
+            planifikaService.getCalendarPermissions(targetCalId),
+            planifikaService.getTasksForWeek(targetCalId, selectedWeekStart),
+            planifikaService.getAllTasksForCalendar(targetCalId),
+          ]);
+          setPermissions(perms);
+          setTasks(weekTasks);
+          setAllCalendarTasks(allTasks);
+        } else {
+          setActiveCalendarId('');
+          setPermissions([]);
+          setTasks([]);
+          setAllCalendarTasks([]);
+        }
+      }
+      showToast('Lectura fresca realizada directamente en Supabase', 'success');
+    } catch (e: any) {
+      showToast('Error al actualizar datos: ' + (e?.message || 'Error de red'), 'error');
+    } finally {
+      setLoadingTasks(false);
+    }
+  }, [currentUser, activeCalendarId, selectedWeekStart, showToast]);
 
   // Switch demo user
   const switchDemoUser = useCallback(async (userId: string) => {
@@ -831,6 +899,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     supabaseCredentials,
     saveSupabaseCredentials,
     resetDemoData,
+    refreshAllData,
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
