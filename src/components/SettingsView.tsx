@@ -256,6 +256,17 @@ export const SettingsView: React.FC = () => {
   const [newUserEmail, setNewUserEmail] = useState('');
   const [copiedSql, setCopiedSql] = useState(false);
   const [copiedRlsFix, setCopiedRlsFix] = useState(false);
+  const [copiedShareUrl, setCopiedShareUrl] = useState(false);
+
+  const handleCopyShareUrl = () => {
+    if (!url || !anonKey) return;
+    const origin = window.location.origin + window.location.pathname;
+    const shareUrl = `${origin}?sb_url=${encodeURIComponent(url.trim())}&sb_key=${encodeURIComponent(anonKey.trim())}`;
+    navigator.clipboard.writeText(shareUrl);
+    setCopiedShareUrl(true);
+    showToast('Enlace de conexión automática a Supabase copiado al portapapeles', 'success');
+    setTimeout(() => setCopiedShareUrl(false), 3000);
+  };
 
   const RLS_FIX_SQL = `-- 1. Desactivar RLS en las 4 tablas (Soluciona "new row violates row-level security policy"):
 ALTER TABLE public.calendars DISABLE ROW LEVEL SECURITY;
@@ -423,7 +434,7 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;`;
             </div>
 
             <p className="text-xs text-slate-600 leading-relaxed mb-4">
-              Planifika funciona con tu proyecto de Supabase en vivo (PostgreSQL + Auth + RLS) o en modo demostración local reactivo con control de permisos y almacenamiento persistente.
+              Planifika se conecta automáticamente a tu proyecto de Supabase en vivo (PostgreSQL + Auth + RLS) mediante las variables de entorno de Netlify (<code className="bg-slate-100 px-1 py-0.5 rounded font-mono">VITE_SUPABASE_URL</code> y <code className="bg-slate-100 px-1 py-0.5 rounded font-mono">VITE_SUPABASE_ANON_KEY</code>). Todos los usuarios y dispositivos comparten la misma base de datos automáticamente sin necesidad de realizar ninguna operación manual.
             </p>
 
             <form onSubmit={handleSaveCredentials} className="space-y-4">
@@ -470,7 +481,7 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;`;
                   <button
                     type="submit"
                     disabled={testing}
-                    className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-xl transition-colors shadow-xs disabled:opacity-50"
+                    className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-xl transition-colors shadow-xs disabled:opacity-50 cursor-pointer"
                   >
                     {testing ? 'Comprobando...' : 'Guardar y Conectar'}
                   </button>

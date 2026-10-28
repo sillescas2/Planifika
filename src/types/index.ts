@@ -1,4 +1,4 @@
-export const APP_VERSION = 'v1.0.14';
+export const APP_VERSION = 'v1.0.17';
 
 export type DayOfWeek = 'lunes' | 'martes' | 'miercoles' | 'jueves' | 'viernes' | 'sabado' | 'domingo';
 

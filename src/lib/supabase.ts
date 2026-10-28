@@ -400,39 +400,40 @@ class PlanifikaDataService {
   }
 
   private initClient() {
-    // 1. Check local storage credentials override
-    const stored = localStorage.getItem(STORAGE_KEYS.SUPABASE_CONFIG);
+    // 1. Primary Source of Truth: Netlify / Build Environment Variables
     let url = import.meta.env.VITE_SUPABASE_URL || '';
     let key = import.meta.env.VITE_SUPABASE_ANON_KEY || '';
 
-    if (stored) {
-      try {
-        const parsed = JSON.parse(stored);
-        if (parsed.url && parsed.anonKey) {
-          url = parsed.url;
-          key = parsed.anonKey;
+    const isEnvValid =
+      url &&
+      key &&
+      url.startsWith('http') &&
+      !url.includes('tu-proyecto.supabase.co') &&
+      !key.includes('tu-anon-key-aqui');
+
+    // 2. Secondary Fallback: localStorage override (only if build env vars are missing/placeholder)
+    if (!isEnvValid) {
+      const stored = localStorage.getItem(STORAGE_KEYS.SUPABASE_CONFIG);
+      if (stored) {
+        try {
+          const parsed = JSON.parse(stored);
+          if (parsed.url && parsed.anonKey) {
+            url = parsed.url;
+            key = parsed.anonKey;
+          }
+        } catch (e) {
+          console.error('Error parsing stored supabase config', e);
         }
-      } catch (e) {
-        console.error('Error parsing stored supabase config', e);
       }
     }
 
     const cleanUrl = sanitizeSupabaseUrl(url);
     const cleanKey = sanitizeSupabaseAnonKey(key);
 
-    // If stored URL had invalid path or extra slashes, auto-fix in localStorage
-    if (stored && (cleanUrl !== url || cleanKey !== key)) {
-      try {
-        localStorage.setItem(STORAGE_KEYS.SUPABASE_CONFIG, JSON.stringify({ url: cleanUrl, anonKey: cleanKey }));
-      } catch (e) {
-        // ignore
-      }
-    }
-
     this.configUrl = cleanUrl;
     this.configKey = cleanKey;
 
-    const isPlaceholder = cleanUrl.includes('tu-proyecto.supabase.co') || cleanKey.includes('tu-anon-key-aqui');
+    const isPlaceholder = !cleanUrl || !cleanKey || cleanUrl.includes('tu-proyecto.supabase.co') || cleanKey.includes('tu-anon-key-aqui');
 
     if (cleanUrl && cleanKey && cleanUrl.startsWith('http') && !isPlaceholder) {
       try {
@@ -1173,13 +1174,15 @@ class PlanifikaDataService {
       try {
         const { data, error } = await this.supabase
           .from('calendars')
-          .select('*, calendar_permissions(role, user_id, user:users(id, email))')
+          .select('*, owner:users!owner_id(id, email), calendar_permissions(role, user_id, user:users(id, email))')
           .order('created_at', { ascending: false });
 
         if (!error && data) {
           supabaseCalendars = data
             .filter((c: any) => {
-              const isOwner = isUserOwner(c.owner_id);
+              const isOwner =
+                isUserOwner(c.owner_id) ||
+                (c.owner?.email && candidateEmails.has(c.owner.email.toLowerCase()));
               const hasSupabasePerm = c.calendar_permissions?.some((p: any) => {
                 if (candidateIds.has(p.user_id)) return true;
                 if (p.user?.email && candidateEmails.has(p.user.email.toLowerCase())) return true;
@@ -1189,7 +1192,9 @@ class PlanifikaDataService {
               return isOwner || hasSupabasePerm || !!localPerm;
             })
             .map((c: any) => {
-              const isOwner = isUserOwner(c.owner_id);
+              const isOwner =
+                isUserOwner(c.owner_id) ||
+                (c.owner?.email && candidateEmails.has(c.owner.email.toLowerCase()));
               const sbPerm = c.calendar_permissions?.find((p: any) => {
                 if (candidateIds.has(p.user_id)) return true;
                 if (p.user?.email && candidateEmails.has(p.user.email.toLowerCase())) return true;
