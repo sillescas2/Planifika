@@ -214,21 +214,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     return getWeekInfo(d);
   }, [selectedWeekStart]);
 
-  // Load profiles and sync active currentUser with real Supabase profile
+  // Load profiles from Supabase/Local database
   const loadProfiles = useCallback(async () => {
     const profiles = await planifikaService.getProfiles();
     setAllProfiles(profiles);
-
-    const savedId = localStorage.getItem('planifika_active_user_id');
-    if (savedId && savedId !== 'logged_out') {
-      const activeMatch = profiles.find(
-        (p) => p.id === savedId || p.email.toLowerCase() === savedId.toLowerCase() || (currentUser && p.email.toLowerCase() === currentUser.email.toLowerCase())
-      );
-      if (activeMatch) {
-        setCurrentUser(activeMatch);
-      }
-    }
-  }, [currentUser]);
+  }, []);
 
   // Full manual refresh from Supabase database
   const refreshAllData = useCallback(async () => {
@@ -241,9 +231,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       let activeUser = currentUser;
       if (savedId && savedId !== 'logged_out') {
         const matched = freshProfiles.find(
-          (p) => p.id === savedId || p.email.toLowerCase() === savedId.toLowerCase() || (currentUser && p.email.toLowerCase() === currentUser.email.toLowerCase())
+          (p) => p.id === savedId || p.email.toLowerCase() === savedId.toLowerCase()
         );
-        if (matched) {
+        if (matched && matched.id !== currentUser?.id) {
           activeUser = matched;
           setCurrentUser(matched);
         }
@@ -292,8 +282,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     }
     if (user) {
-      setCurrentUser(user);
       localStorage.setItem('planifika_active_user_id', user.id);
+      setCurrentUser(user);
       showToast(`Sesión cambiada a: ${user.full_name}`, 'info');
     }
   }, [allProfiles, showToast]);
@@ -322,7 +312,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // Load calendars for current user
   const loadCalendars = useCallback(async () => {
-    if (!currentUser) return;
+    if (!currentUser) {
+      setCalendars([]);
+      setActiveCalendarId('');
+      return;
+    }
     const cals = await planifikaService.getCalendarsForUser(currentUser.id, currentUser.email);
     setCalendars(cals);
 
@@ -335,7 +329,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } else {
       setActiveCalendarId('');
     }
-  }, [currentUser]);
+  }, [currentUser?.id, currentUser?.email]);
 
   // Active Calendar Object
   const activeCalendar = useMemo(() => {
@@ -399,11 +393,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, [activeCalendarId, selectedWeekStart]);
 
-  // Effect: When active user changes, reload profiles & calendars
+  // Effect: Load profiles once on mount
   useEffect(() => {
     loadProfiles();
   }, [loadProfiles]);
 
+  // Effect: Reload calendars when currentUser changes
   useEffect(() => {
     loadCalendars();
   }, [loadCalendars]);
@@ -416,9 +411,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, [activeCalendarId, selectedWeekStart, loadPermissions, loadTasks]);
 
-  // Effect: Auto-refresh on window focus, visibility change or periodic background sync (10s)
+  // Effect: Auto-refresh on window focus or visibility change (no periodic background thrashing)
   useEffect(() => {
-    const refreshAllData = () => {
+    const handleSync = () => {
       loadProfiles();
       loadCalendars();
       if (activeCalendarId) {
@@ -429,19 +424,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     const handleVisibility = () => {
       if (document.visibilityState === 'visible') {
-        refreshAllData();
+        handleSync();
       }
     };
 
-    window.addEventListener('focus', refreshAllData);
+    window.addEventListener('focus', handleSync);
     document.addEventListener('visibilitychange', handleVisibility);
 
-    const intervalId = setInterval(refreshAllData, 10000);
-
     return () => {
-      window.removeEventListener('focus', refreshAllData);
+      window.removeEventListener('focus', handleSync);
       document.removeEventListener('visibilitychange', handleVisibility);
-      clearInterval(intervalId);
     };
   }, [loadProfiles, loadCalendars, activeCalendarId, loadPermissions, loadTasks]);
 

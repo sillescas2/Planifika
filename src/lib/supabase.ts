@@ -1184,16 +1184,14 @@ class PlanifikaDataService {
               const hasSupabasePerm = c.calendar_permissions?.some((p: any) => {
                 return candidateIds.has(p.user_id) || p.user_id === resolvedUserId;
               });
-              const localPerm = hasLocalPerm(c.id);
-              return isOwner || hasSupabasePerm || !!localPerm;
+              return isOwner || hasSupabasePerm;
             })
             .map((c: any) => {
               const isOwner = isUserOwner(c.owner_id) || c.owner_id === resolvedUserId;
               const sbPerm = c.calendar_permissions?.find((p: any) => {
                 return candidateIds.has(p.user_id) || p.user_id === resolvedUserId;
               });
-              const localPerm = hasLocalPerm(c.id);
-              const role: UserRole = isOwner ? 'admin' : (sbPerm?.role || localPerm?.role || 'viewer');
+              const role: UserRole = isOwner ? 'admin' : (sbPerm?.role || 'viewer');
               return {
                 id: c.id,
                 name: c.name,
@@ -1330,12 +1328,18 @@ class PlanifikaDataService {
           try {
             await this.supabase
               .from('calendar_permissions')
-              .upsert({
+              .delete()
+              .eq('calendar_id', data.id)
+              .eq('user_id', resolvedOwnerId);
+
+            await this.supabase
+              .from('calendar_permissions')
+              .insert({
                 calendar_id: data.id,
                 user_id: resolvedOwnerId,
                 role: 'admin',
                 granted_by: resolvedOwnerId,
-              }, { onConflict: 'calendar_id, user_id' });
+              });
           } catch (permErr) {
             console.warn('Aviso permisos en Supabase:', permErr);
           }
@@ -1434,7 +1438,7 @@ class PlanifikaDataService {
           .eq('calendar_id', calendarId);
 
         if (!error && data) {
-          return data.map((p: any) => ({
+          const remotePerms: CalendarPermission[] = data.map((p: any) => ({
             id: p.id,
             calendar_id: p.calendar_id,
             user_id: p.user_id,
@@ -1449,6 +1453,67 @@ class PlanifikaDataService {
               system_role: p.user.role === 'admin' ? 'admin' : 'user',
             } : undefined,
           }));
+
+          // Repair check: sync any local permissions for this calendar that are missing in Supabase
+          const store = this.getLocalStore();
+          const localCalendarPerms = store.permissions.filter((p) => p.calendar_id === calendarId);
+          let syncedAny = false;
+          for (const localP of localCalendarPerms) {
+            const candidateUserIds = new Set<string>([localP.user_id]);
+            if (localP.user_profile?.id) candidateUserIds.add(localP.user_profile.id);
+            if (localP.user_profile?.email) {
+              const prof = store.profiles.find((pr) => pr.email.toLowerCase() === localP.user_profile!.email.toLowerCase());
+              if (prof) candidateUserIds.add(prof.id);
+            }
+
+            const existsRemotely = remotePerms.some((rp) => candidateUserIds.has(rp.user_id));
+            if (!existsRemotely) {
+              const resolvedUid = await this.resolveSupabaseUserId(localP.user_id, localP.user_profile?.email);
+              const resolvedGby = await this.resolveSupabaseUserId(localP.granted_by || localP.user_id);
+              
+              await this.supabase
+                .from('calendar_permissions')
+                .delete()
+                .eq('calendar_id', calendarId)
+                .eq('user_id', resolvedUid);
+
+              const { error: insErr } = await this.supabase
+                .from('calendar_permissions')
+                .insert({
+                  calendar_id: calendarId,
+                  user_id: resolvedUid,
+                  role: localP.role,
+                  granted_by: resolvedGby,
+                });
+              if (!insErr) syncedAny = true;
+            }
+          }
+
+          if (syncedAny) {
+            const { data: refetched } = await this.supabase
+              .from('calendar_permissions')
+              .select('*, user:users(id, email, full_name, avatar_url, role)')
+              .eq('calendar_id', calendarId);
+            if (refetched) {
+              return refetched.map((p: any) => ({
+                id: p.id,
+                calendar_id: p.calendar_id,
+                user_id: p.user_id,
+                role: p.role as UserRole,
+                granted_by: p.granted_by,
+                created_at: p.created_at,
+                user_profile: p.user ? {
+                  id: p.user.id,
+                  email: p.user.email,
+                  full_name: p.user.full_name,
+                  avatar_url: p.user.avatar_url,
+                  system_role: p.user.role === 'admin' ? 'admin' : 'user',
+                } : undefined,
+              }));
+            }
+          }
+
+          return remotePerms;
         }
       } catch (err) {
         console.warn('Fallback to local permissions', err);
@@ -1479,18 +1544,31 @@ class PlanifikaDataService {
     let remotePerm: CalendarPermission | null = null;
     if (this.supabase && this.isLiveConnected) {
       try {
+        // Delete previous permission record if any
+        await this.supabase
+          .from('calendar_permissions')
+          .delete()
+          .eq('calendar_id', calendarId)
+          .eq('user_id', resolvedUserId);
+
+        // Insert new permission
         const { data, error } = await this.supabase
           .from('calendar_permissions')
-          .upsert({
+          .insert({
             calendar_id: calendarId,
             user_id: resolvedUserId,
             role,
             granted_by: resolvedGrantedBy,
-          }, { onConflict: 'calendar_id, user_id' })
+          })
           .select('*, user:users(id, email, full_name, avatar_url, role)')
           .single();
 
-        if (!error && data) {
+        if (error) {
+          console.error('Error al insertar permiso en Supabase:', error);
+          throw new Error(`Error en Supabase al conceder permiso: ${error.message}`);
+        }
+
+        if (data) {
           remotePerm = {
             id: data.id,
             calendar_id: data.calendar_id,
@@ -1513,8 +1591,9 @@ class PlanifikaDataService {
             } : undefined),
           };
         }
-      } catch (err) {
-        console.warn('Error updating permission in Supabase:', err);
+      } catch (err: any) {
+        console.error('Error al guardar permiso en Supabase:', err);
+        throw err;
       }
     }
 
