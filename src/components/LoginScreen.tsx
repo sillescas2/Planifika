@@ -323,34 +323,14 @@ export const LoginScreen: React.FC<LoginScreenProps> = ({ onSuccess }) => {
                       </div>
                     </div>
 
-                    <div>
-                      <label className="block text-xs font-semibold text-slate-700 mb-1">
-                        Rol inicial solicitado
-                      </label>
-                      <div className="grid grid-cols-2 gap-2">
-                        <button
-                          type="button"
-                          onClick={() => setRequestedRole('user')}
-                          className={`p-2 rounded-xl border text-xs text-center transition-all cursor-pointer ${
-                            requestedRole === 'user'
-                              ? 'bg-slate-900 text-white border-slate-900 font-semibold'
-                              : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
-                          }`}
-                        >
-                          Colaborador
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setRequestedRole('admin')}
-                          className={`p-2 rounded-xl border text-xs text-center transition-all cursor-pointer ${
-                            requestedRole === 'admin'
-                              ? 'bg-slate-900 text-white border-slate-900 font-semibold'
-                              : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
-                          }`}
-                        >
-                          Administrador
-                        </button>
+                    <div className="p-2.5 bg-slate-50 border border-slate-200/80 rounded-xl flex items-center justify-between text-xs">
+                      <div>
+                        <span className="font-semibold text-slate-700 block text-[11px]">Rol en el sistema</span>
+                        <span className="text-slate-500 text-[10px]">Registro inicial como Colaborador (usuario estándar)</span>
                       </div>
+                      <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-200 text-slate-800">
+                        Colaborador
+                      </span>
                     </div>
                   </>
                 )}

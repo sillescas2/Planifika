@@ -32,6 +32,17 @@ interface AppContextType {
   allProfiles: UserProfile[];
   loadProfiles: () => Promise<void>;
   addNewProfile: (profile: UserProfile) => Promise<void>;
+  createUserWithPassword: (
+    email: string,
+    password: string,
+    fullName: string,
+    role: 'admin' | 'user'
+  ) => Promise<{ success: boolean; error?: string }>;
+  updateUserAccount: (
+    userId: string,
+    data: { full_name?: string; email?: string; password?: string; role?: 'admin' | 'user' }
+  ) => Promise<{ success: boolean; error?: string }>;
+  deleteUserAccount: (userId: string) => Promise<{ success: boolean; error?: string }>;
   
   calendars: Calendar[];
   activeCalendar: Calendar | null;
@@ -308,6 +319,64 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const created = await planifikaService.createProfile(profile);
     await loadProfiles();
     showToast(`Usuario ${created.full_name} añadido al sistema`, 'success');
+  }, [loadProfiles, showToast]);
+
+  const createUserWithPassword = useCallback(async (
+    email: string,
+    password: string,
+    fullName: string,
+    role: 'admin' | 'user'
+  ) => {
+    try {
+      const res = await planifikaService.registerUser(email, password, fullName, role);
+      if (res.success && res.user) {
+        await loadProfiles();
+        showToast(`Usuario ${res.user.full_name} (${role === 'admin' ? 'Administrador' : 'Colaborador'}) creado correctamente`, 'success');
+        return { success: true };
+      }
+      return { success: false, error: res.error || 'Error al crear usuario' };
+    } catch (e: any) {
+      return { success: false, error: e?.message || 'Error al crear usuario' };
+    }
+  }, [loadProfiles, showToast]);
+
+  const updateUserAccount = useCallback(async (
+    userId: string,
+    data: { full_name?: string; email?: string; password?: string; role?: 'admin' | 'user' }
+  ) => {
+    try {
+      const res = await planifikaService.updateUserAccount(userId, data);
+      if (res.success) {
+        await loadProfiles();
+        if (currentUser?.id === userId) {
+          setCurrentUser((prev) => prev ? {
+            ...prev,
+            full_name: data.full_name || prev.full_name,
+            email: data.email || prev.email,
+            system_role: data.role || prev.system_role,
+          } : null);
+        }
+        showToast('Usuario actualizado con éxito', 'success');
+        return { success: true };
+      }
+      return { success: false, error: res.error || 'Error al actualizar usuario' };
+    } catch (e: any) {
+      return { success: false, error: e?.message || 'Error al actualizar usuario' };
+    }
+  }, [currentUser?.id, loadProfiles, showToast]);
+
+  const deleteUserAccount = useCallback(async (userId: string) => {
+    try {
+      const res = await planifikaService.deleteUserAccount(userId);
+      if (res.success) {
+        await loadProfiles();
+        showToast('Usuario eliminado del sistema', 'info');
+        return { success: true };
+      }
+      return { success: false, error: res.error || 'Error al eliminar usuario' };
+    } catch (e: any) {
+      return { success: false, error: e?.message || 'Error al eliminar usuario' };
+    }
   }, [loadProfiles, showToast]);
 
   // Load calendars for current user
@@ -835,6 +904,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     allProfiles,
     loadProfiles,
     addNewProfile,
+    createUserWithPassword,
+    updateUserAccount,
+    deleteUserAccount,
     calendars,
     activeCalendar,
     setActiveCalendarId,

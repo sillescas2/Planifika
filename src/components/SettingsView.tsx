@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
+import { UserProfile } from '../types';
 import {
   Settings,
   Database,
@@ -15,6 +16,16 @@ import {
   ShieldCheck,
   AlertTriangle,
   ShieldAlert,
+  Edit3,
+  Trash2,
+  Lock,
+  Eye,
+  EyeOff,
+  KeyRound,
+  Shield,
+  X,
+  Mail,
+  User,
 } from 'lucide-react';
 
 const SUPABASE_SQL_SCRIPT = `-- ==============================================================================
@@ -60,6 +71,26 @@ BEGIN
     CASE WHEN p_role = 'admin' THEN 'admin' ELSE 'user' END
   ) RETURNING id INTO v_user_id;
   RETURN v_user_id;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Actualización completa de usuario (nombre, email, rol y opcionalmente password)
+CREATE OR REPLACE FUNCTION public.update_app_user(
+  p_id UUID,
+  p_full_name TEXT,
+  p_email TEXT,
+  p_role TEXT,
+  p_password TEXT DEFAULT NULL
+) RETURNS VOID AS $$
+BEGIN
+  UPDATE public.users
+  SET
+    full_name = TRIM(p_full_name),
+    email = LOWER(TRIM(p_email)),
+    role = CASE WHEN p_role = 'admin' THEN 'admin' ELSE 'user' END,
+    password_hash = CASE WHEN p_password IS NOT NULL AND TRIM(p_password) <> '' THEN crypt(p_password, gen_salt('bf', 10)) ELSE password_hash END,
+    updated_at = NOW()
+  WHERE id = p_id;
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
@@ -218,6 +249,10 @@ export const SettingsView: React.FC = () => {
     resetDemoData,
     allProfiles,
     addNewProfile,
+    createUserWithPassword,
+    updateUserAccount,
+    deleteUserAccount,
+    currentUser,
     isAdminUser,
     setActiveTab: setGlobalActiveTab,
     showToast,
@@ -251,9 +286,27 @@ export const SettingsView: React.FC = () => {
   const [anonKey, setAnonKey] = useState(supabaseCredentials.anonKey);
   const [testing, setTesting] = useState(false);
 
-  // New user state
+  // New user state (Admin creation with password & role)
   const [newUserName, setNewUserName] = useState('');
   const [newUserEmail, setNewUserEmail] = useState('');
+  const [newUserPassword, setNewUserPassword] = useState('');
+  const [newUserRole, setNewUserRole] = useState<'admin' | 'user'>('user');
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [isCreatingUser, setIsCreatingUser] = useState(false);
+
+  // Edit user state
+  const [editingUser, setEditingUser] = useState<UserProfile | null>(null);
+  const [editFullName, setEditFullName] = useState('');
+  const [editEmail, setEditEmail] = useState('');
+  const [editRole, setEditRole] = useState<'admin' | 'user'>('user');
+  const [editPassword, setEditPassword] = useState('');
+  const [showEditPassword, setShowEditPassword] = useState(false);
+  const [isUpdatingUser, setIsUpdatingUser] = useState(false);
+
+  // Delete user state
+  const [deletingUser, setDeletingUser] = useState<UserProfile | null>(null);
+  const [isDeletingUser, setIsDeletingUser] = useState(false);
+
   const [copiedSql, setCopiedSql] = useState(false);
   const [copiedRlsFix, setCopiedRlsFix] = useState(false);
   const [copiedShareUrl, setCopiedShareUrl] = useState(false);
@@ -319,18 +372,87 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;`;
 
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newUserName.trim() || !newUserEmail.trim()) return;
+    if (!newUserName.trim() || !newUserEmail.trim() || !newUserPassword.trim()) {
+      showToast('Por favor completa todos los campos (nombre, correo y contraseña)', 'error');
+      return;
+    }
+    if (newUserPassword.length < 6) {
+      showToast('La contraseña debe tener al menos 6 caracteres', 'error');
+      return;
+    }
+    setIsCreatingUser(true);
+    try {
+      const res = await createUserWithPassword(
+        newUserEmail.trim(),
+        newUserPassword.trim(),
+        newUserName.trim(),
+        newUserRole
+      );
+      if (res.success) {
+        setNewUserName('');
+        setNewUserEmail('');
+        setNewUserPassword('');
+        setNewUserRole('user');
+      } else {
+        showToast(res.error || 'Error al crear usuario', 'error');
+      }
+    } finally {
+      setIsCreatingUser(false);
+    }
+  };
 
-    await addNewProfile({
-      id: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'a0000000-0000-0000-0000-' + Date.now().toString().slice(-12).padStart(12, '0'),
-      email: newUserEmail.trim(),
-      full_name: newUserName.trim(),
-      avatar_url: `https://api.dicebear.com/7.x/avataaars/svg?seed=${encodeURIComponent(newUserName.trim())}`,
-      system_role: 'user',
-    });
+  const handleOpenEditUser = (user: UserProfile) => {
+    setEditingUser(user);
+    setEditFullName(user.full_name);
+    setEditEmail(user.email);
+    setEditRole(user.system_role);
+    setEditPassword('');
+    setShowEditPassword(false);
+  };
 
-    setNewUserName('');
-    setNewUserEmail('');
+  const handleSaveEditUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingUser) return;
+    if (!editFullName.trim() || !editEmail.trim()) {
+      showToast('El nombre y el correo no pueden estar vacíos', 'error');
+      return;
+    }
+    if (editPassword && editPassword.length < 6) {
+      showToast('La nueva contraseña debe tener al menos 6 caracteres', 'error');
+      return;
+    }
+    setIsUpdatingUser(true);
+    try {
+      const res = await updateUserAccount(editingUser.id, {
+        full_name: editFullName.trim(),
+        email: editEmail.trim(),
+        role: editRole,
+        password: editPassword.trim() || undefined,
+      });
+      if (res.success) {
+        setEditingUser(null);
+        setEditPassword('');
+      } else {
+        showToast(res.error || 'Error al actualizar usuario', 'error');
+      }
+    } finally {
+      setIsUpdatingUser(false);
+    }
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deletingUser) return;
+    setIsDeletingUser(true);
+    try {
+      const res = await deleteUserAccount(deletingUser.id);
+      if (res.success) {
+        setDeletingUser(null);
+      } else {
+        showToast(res.error || 'Error al eliminar usuario', 'error');
+      }
+    } finally {
+      setIsDeletingUser(false);
+    }
   };
 
   const copySql = () => {
@@ -497,38 +619,124 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;`;
         <div className="mt-6 space-y-6 max-w-4xl">
           {/* Create user */}
           <div className="p-5 bg-white border border-slate-200 rounded-2xl shadow-xs">
-            <h3 className="text-sm font-bold text-slate-900 mb-3 flex items-center gap-2">
-              <UserPlus className="w-4 h-4 text-slate-800" />
-              <span>Registrar nuevo usuario en el sistema</span>
-            </h3>
+            <div className="flex items-center justify-between pb-3 mb-4 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <UserPlus className="w-5 h-5 text-slate-800" />
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900">
+                    Dar de alta nuevo usuario en el sistema
+                  </h3>
+                  <p className="text-[11px] text-slate-500">
+                    Crea credenciales completas con contraseña y rol de acceso en la base de datos Supabase
+                  </p>
+                </div>
+              </div>
+            </div>
 
-            <form onSubmit={handleCreateUser} className="grid grid-cols-1 sm:grid-cols-12 gap-3">
-              <div className="sm:col-span-5">
-                <input
-                  type="text"
-                  required
-                  placeholder="Nombre y Apellidos"
-                  value={newUserName}
-                  onChange={(e) => setNewUserName(e.target.value)}
-                  className="w-full px-3.5 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900"
-                />
+            <form onSubmit={handleCreateUser} className="space-y-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Nombre y Apellidos <span className="text-rose-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      required
+                      placeholder="Ej: Laura Gómez"
+                      value={newUserName}
+                      onChange={(e) => setNewUserName(e.target.value)}
+                      className="w-full pl-9 pr-3.5 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900 focus:bg-white transition-all"
+                    />
+                    <User className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Correo Electrónico <span className="text-rose-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="email"
+                      required
+                      placeholder="laura@planifika.app"
+                      value={newUserEmail}
+                      onChange={(e) => setNewUserEmail(e.target.value)}
+                      className="w-full pl-9 pr-3.5 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900 focus:bg-white transition-all"
+                    />
+                    <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                  </div>
+                </div>
               </div>
-              <div className="sm:col-span-5">
-                <input
-                  type="email"
-                  required
-                  placeholder="correo@empresa.com"
-                  value={newUserEmail}
-                  onChange={(e) => setNewUserEmail(e.target.value)}
-                  className="w-full px-3.5 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900"
-                />
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Contraseña <span className="text-rose-500">*</span>
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showNewPassword ? 'text' : 'password'}
+                      required
+                      placeholder="Mínimo 6 caracteres..."
+                      value={newUserPassword}
+                      onChange={(e) => setNewUserPassword(e.target.value)}
+                      className="w-full pl-9 pr-9 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900 focus:bg-white transition-all"
+                    />
+                    <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                    <button
+                      type="button"
+                      onClick={() => setShowNewPassword(!showNewPassword)}
+                      className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-700 cursor-pointer"
+                      title={showNewPassword ? 'Ocultar' : 'Ver'}
+                    >
+                      {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Rol en el sistema
+                  </label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setNewUserRole('user')}
+                      className={`p-2 rounded-xl border text-xs text-center transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                        newUserRole === 'user'
+                          ? 'bg-slate-900 text-white border-slate-900 font-semibold shadow-2xs'
+                          : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                      }`}
+                    >
+                      <User className="w-3.5 h-3.5" />
+                      <span>Colaborador</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setNewUserRole('admin')}
+                      className={`p-2 rounded-xl border text-xs text-center transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                        newUserRole === 'admin'
+                          ? 'bg-amber-600 text-white border-amber-600 font-semibold shadow-2xs'
+                          : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                      }`}
+                    >
+                      <Shield className="w-3.5 h-3.5" />
+                      <span>Administrador</span>
+                    </button>
+                  </div>
+                </div>
               </div>
-              <div className="sm:col-span-2">
+
+              <div className="flex justify-end pt-2">
                 <button
                   type="submit"
-                  className="w-full h-full py-2 px-3 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-xl transition-colors"
+                  disabled={isCreatingUser}
+                  className="inline-flex items-center gap-1.5 px-5 py-2 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-xl transition-all shadow-xs disabled:opacity-50 cursor-pointer"
                 >
-                  Registrar
+                  <UserPlus className="w-3.5 h-3.5" />
+                  <span>{isCreatingUser ? 'Guardando en Supabase...' : 'Dar de alta usuario'}</span>
                 </button>
               </div>
             </form>
@@ -536,27 +744,96 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;`;
 
           {/* Users list */}
           <div className="p-5 bg-white border border-slate-200 rounded-2xl shadow-xs">
-            <h3 className="text-sm font-bold text-slate-900 mb-3">
-              Usuarios registrados ({allProfiles.length})
-            </h3>
+            <div className="flex items-center justify-between pb-3 mb-3 border-b border-slate-100">
+              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                <Users className="w-4 h-4 text-slate-800" />
+                <span>Usuarios registrados ({allProfiles.length})</span>
+              </h3>
+              <span className="text-[11px] text-slate-500">
+                Control de altas, modificaciones y bajas
+              </span>
+            </div>
 
             <div className="divide-y divide-slate-100">
-              {allProfiles.map((p) => (
-                <div key={p.id} className="py-3 flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-full bg-slate-200 text-slate-800 flex items-center justify-center font-bold text-xs">
-                      {p.full_name.charAt(0)}
+              {allProfiles.map((p) => {
+                const isAdmin = p.system_role === 'admin';
+                const isCurrent = currentUser?.id === p.id;
+                const isPrimaryAdmin = p.id === 'a0000000-0000-0000-0000-000000000001' || p.id === 'usr-admin-carlos';
+                const isProtectedFromDelete = isCurrent || isPrimaryAdmin;
+
+                return (
+                  <div key={p.id} className="py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-slate-50/50 px-2 rounded-xl transition-colors">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className={`w-9 h-9 rounded-full flex items-center justify-center font-bold text-xs shrink-0 ${
+                        isAdmin ? 'bg-amber-100 text-amber-800' : 'bg-slate-200 text-slate-700'
+                      }`}>
+                        {p.avatar_url ? (
+                          <img
+                            src={p.avatar_url}
+                            alt={p.full_name}
+                            referrerPolicy="no-referrer"
+                            className="w-full h-full object-cover rounded-full"
+                          />
+                        ) : (
+                          p.full_name.charAt(0)
+                        )}
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="text-xs font-bold text-slate-900 truncate">{p.full_name}</p>
+                          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full flex items-center gap-1 ${
+                            isAdmin
+                              ? 'bg-amber-50 text-amber-800 border border-amber-200'
+                              : 'bg-slate-100 text-slate-600 border border-slate-200'
+                          }`}>
+                            {isAdmin ? <Shield className="w-2.5 h-2.5 text-amber-600" /> : <User className="w-2.5 h-2.5 text-slate-500" />}
+                            <span>{isAdmin ? 'Administrador' : 'Colaborador'}</span>
+                          </span>
+                          {isCurrent && (
+                            <span className="text-[10px] bg-slate-900 text-white font-semibold px-1.5 py-0.2 rounded">
+                              Tú
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-slate-500 font-mono truncate">{p.email}</p>
+                      </div>
                     </div>
-                    <div>
-                      <p className="text-xs font-bold text-slate-900">{p.full_name}</p>
-                      <p className="text-[11px] text-slate-500 font-mono">{p.email}</p>
+
+                    <div className="flex items-center gap-2 self-end sm:self-auto shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => handleOpenEditUser(p)}
+                        className="inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-slate-700 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 rounded-lg border border-slate-200 transition-colors cursor-pointer"
+                        title="Modificar datos del usuario"
+                      >
+                        <Edit3 className="w-3.5 h-3.5 text-slate-600" />
+                        <span>Modificar</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        disabled={isProtectedFromDelete}
+                        onClick={() => setDeletingUser(p)}
+                        className={`inline-flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold rounded-lg border transition-colors ${
+                          isProtectedFromDelete
+                            ? 'text-slate-400 bg-slate-50 border-slate-200 cursor-not-allowed opacity-60'
+                            : 'text-rose-700 bg-rose-50 hover:bg-rose-100 border-rose-200 cursor-pointer'
+                        }`}
+                        title={
+                          isCurrent
+                            ? 'No puedes eliminar la cuenta actualmente en uso'
+                            : isPrimaryAdmin
+                            ? 'No se puede eliminar la cuenta principal de administración'
+                            : 'Eliminar usuario de la base de datos'
+                        }
+                      >
+                        <Trash2 className="w-3.5 h-3.5 text-rose-500" />
+                        <span>Eliminar</span>
+                      </button>
                     </div>
                   </div>
-                  <span className="text-[11px] text-slate-500 font-mono tabular-nums">
-                    ID: {p.id.slice(0, 16)}...
-                  </span>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         </div>
@@ -680,6 +957,194 @@ $$ LANGUAGE plpgsql SECURITY DEFINER;`;
                   Build command: <span className="font-bold text-slate-900">npm run build</span> | Publish directory: <span className="font-bold text-slate-900">dist</span>
                 </p>
               </div>
+
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200">
+                <h4 className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>4. Cómo quitar el botón &quot;Powered by Netlify&quot;</span>
+                </h4>
+                <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+                  Para eliminar el botón o badge flotante de Netlify en tu aplicación:
+                </p>
+                <ul className="text-xs text-slate-600 mt-1.5 list-disc list-inside space-y-1">
+                  <li>En tu panel de Netlify: accede a <b>Site configuration</b> → <b>General</b> → <b>Site details</b> y desmarca la opción del <i>Netlify badge</i> si está activa.</li>
+                  <li>Revisa <b>Build & deploy</b> → <b>Snippet injection</b> y elimina cualquier snippet HTML inyectado que cargue el badge.</li>
+                  <li>En el código fuente de Planifika ya hemos añadido reglas automáticas en CSS para ocultar selectores de badges inyectados por Netlify.</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Modificar Usuario */}
+      {editingUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-in fade-in">
+          <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl border border-slate-200 overflow-hidden animate-in zoom-in-95">
+            <div className="flex items-center justify-between p-4 border-b border-slate-100 bg-slate-50">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-slate-900 text-white flex items-center justify-center">
+                  <Edit3 className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="text-xs font-bold text-slate-900">Modificar Usuario</h3>
+                  <p className="text-[10px] text-slate-500">Actualizar datos, rol y contraseña</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingUser(null)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-200/50 transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEditUser} className="p-5 space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Nombre y Apellidos <span className="text-rose-500">*</span>
+                </label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    required
+                    value={editFullName}
+                    onChange={(e) => setEditFullName(e.target.value)}
+                    className="w-full pl-9 pr-3.5 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900 focus:bg-white transition-all"
+                  />
+                  <User className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Correo Electrónico <span className="text-rose-500">*</span>
+                </label>
+                <div className="relative">
+                  <input
+                    type="email"
+                    required
+                    value={editEmail}
+                    onChange={(e) => setEditEmail(e.target.value)}
+                    className="w-full pl-9 pr-3.5 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900 focus:bg-white transition-all"
+                  />
+                  <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Rol en el sistema
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setEditRole('user')}
+                    className={`p-2 rounded-xl border text-xs text-center transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                      editRole === 'user'
+                        ? 'bg-slate-900 text-white border-slate-900 font-semibold shadow-2xs'
+                        : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                    }`}
+                  >
+                    <User className="w-3.5 h-3.5" />
+                    <span>Colaborador</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEditRole('admin')}
+                    className={`p-2 rounded-xl border text-xs text-center transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                      editRole === 'admin'
+                        ? 'bg-amber-600 text-white border-amber-600 font-semibold shadow-2xs'
+                        : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                    }`}
+                  >
+                    <Shield className="w-3.5 h-3.5" />
+                    <span>Administrador</span>
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  Nueva Contraseña (Opcional)
+                </label>
+                <div className="relative">
+                  <input
+                    type={showEditPassword ? 'text' : 'password'}
+                    placeholder="Dejar en blanco para conservar la actual"
+                    value={editPassword}
+                    onChange={(e) => setEditPassword(e.target.value)}
+                    className="w-full pl-9 pr-9 py-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900 focus:bg-white transition-all"
+                  />
+                  <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-2.5" />
+                  <button
+                    type="button"
+                    onClick={() => setShowEditPassword(!showEditPassword)}
+                    className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-700 cursor-pointer"
+                    title={showEditPassword ? 'Ocultar' : 'Ver'}
+                  >
+                    {showEditPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+                <p className="text-[10px] text-slate-400 mt-1">
+                  Introduce una contraseña solo si deseas cambiarla (mínimo 6 caracteres).
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setEditingUser(null)}
+                  className="w-1/2 py-2 px-3 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition-all cursor-pointer text-center"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={isUpdatingUser}
+                  className="w-1/2 py-2 px-3 text-xs font-semibold text-white bg-slate-900 hover:bg-slate-800 rounded-xl transition-all cursor-pointer text-center disabled:opacity-50"
+                >
+                  {isUpdatingUser ? 'Guardando...' : 'Guardar Cambios'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Confirmación Eliminar Usuario */}
+      {deletingUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-xs animate-in fade-in">
+          <div className="bg-white w-full max-w-sm rounded-2xl shadow-2xl border border-slate-200 overflow-hidden animate-in zoom-in-95 p-5 space-y-4">
+            <div className="w-10 h-10 rounded-full bg-rose-50 text-rose-600 flex items-center justify-center mx-auto border border-rose-200">
+              <Trash2 className="w-5 h-5" />
+            </div>
+
+            <div className="text-center">
+              <h3 className="text-sm font-bold text-slate-900">¿Eliminar este usuario?</h3>
+              <p className="text-xs text-slate-500 mt-1 leading-relaxed">
+                Estás a punto de eliminar la cuenta de <b>{deletingUser.full_name}</b> ({deletingUser.email}).
+                Esta acción revocará sus accesos y permisos en la base de datos Supabase.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setDeletingUser(null)}
+                className="w-1/2 py-2 px-3 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl transition-all cursor-pointer text-center"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={isDeletingUser}
+                onClick={handleConfirmDelete}
+                className="w-1/2 py-2 px-3 text-xs font-semibold text-white bg-rose-600 hover:bg-rose-700 rounded-xl transition-all cursor-pointer text-center disabled:opacity-50 shadow-xs"
+              >
+                {isDeletingUser ? 'Eliminando...' : 'Eliminar Usuario'}
+              </button>
             </div>
           </div>
         </div>

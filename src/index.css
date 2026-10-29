@@ -31,3 +31,18 @@
 ::-webkit-scrollbar-thumb:hover {
   background: #94a3b8;
 }
+
+/* Ocultar badge inyectado por Netlify */
+#netlify-badge,
+.netlify-badge,
+[id*="netlify-badge"],
+[class*="netlify-badge"],
+iframe[src*="netlify"],
+div[data-netlify-badge],
+a[href*="netlify.com"][target="_blank"] {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+

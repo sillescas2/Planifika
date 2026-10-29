@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useApp } from '../context/AppContext';
-import { DayOfWeek, TaskColorId, TaskStatus } from '../types';
+import { DayOfWeek, TaskColorId, TaskStatus, Task } from '../types';
 import { DAYS_OF_WEEK } from '../utils/dateUtils';
 import { COLOR_LIST } from '../utils/colorThemes';
 import {
@@ -26,6 +26,7 @@ export const TaskModal: React.FC = () => {
     updateTask,
     isAdmin,
     allCalendarTasks,
+    currentRole,
   } = useApp();
 
   const [title, setTitle] = useState('');
@@ -148,20 +149,31 @@ export const TaskModal: React.FC = () => {
       return;
     }
 
+    if (currentRole === 'editor' && status !== 'none' && status !== 'pending') {
+      setErrorMsg('Como Editor, solo puedes crear o modificar tareas en estado "Sin estado" o "Pendiente".');
+      return;
+    }
+
     setSubmitting(true);
     setErrorMsg('');
 
     try {
       if (taskToEdit) {
         // If status changed and user is not admin, prevent or let updateTask handle it
-        const res = await updateTask(taskToEdit.id, {
-          title: title.trim(),
+        const updates: Partial<Task> = {
           description: description.trim(),
           day_of_week: Array.isArray(dayOfWeek) ? dayOfWeek[0] : dayOfWeek,
           color,
           time_estimate: timeEstimate.trim(),
-          ...(isAdmin ? { status } : {}),
-        });
+          status,
+        };
+        
+        // Prevent title modification for Editors
+        if (currentRole !== 'editor') {
+            updates.title = title.trim();
+        }
+
+        const res = await updateTask(taskToEdit.id, updates);
         if (res.success) {
           closeTaskModal();
         } else {
@@ -235,6 +247,7 @@ export const TaskModal: React.FC = () => {
                 required
                 placeholder="Ej: Sprint review, Revisión de métricas..."
                 value={title}
+                disabled={currentRole === 'editor' && !!taskToEdit}
                 onChange={(e) => {
                   setTitle(e.target.value);
                   setShowSuggestions(true);
@@ -242,7 +255,7 @@ export const TaskModal: React.FC = () => {
                 }}
                 onFocus={() => setShowSuggestions(true)}
                 onKeyDown={handleKeyDown}
-                className="w-full px-3.5 py-2 text-sm bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition-all placeholder:text-slate-400"
+                className={`w-full px-3.5 py-2 text-sm bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-slate-900 focus:border-transparent transition-all placeholder:text-slate-400 ${currentRole === 'editor' && !!taskToEdit ? 'bg-slate-100 cursor-not-allowed' : ''}`}
               />
 
               {/* Suggestions Dropdown */}
@@ -433,6 +446,12 @@ export const TaskModal: React.FC = () => {
                   <span>Solo el Administrador puede modificar el estado</span>
                 </div>
               )}
+              {!taskToEdit && currentRole === 'editor' && (
+                <div className="flex items-center gap-1 text-[11px] text-sky-800 bg-sky-50 px-2 py-0.5 rounded border border-sky-200">
+                  <Lock className="w-3 h-3 text-sky-600" />
+                  <span>Editor: solo estados &quot;Sin estado&quot; y &quot;Pendiente&quot;</span>
+                </div>
+              )}
             </div>
 
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
@@ -469,13 +488,14 @@ export const TaskModal: React.FC = () => {
               {/* Parcial */}
               <button
                 type="button"
-                disabled={!isAdmin && !!taskToEdit}
+                disabled={(!isAdmin && !!taskToEdit) || (!taskToEdit && currentRole === 'editor')}
                 onClick={() => setStatus('partial')}
+                title={!taskToEdit && currentRole === 'editor' ? 'Como editor solo puedes crear notas en Sin estado o Pendiente' : undefined}
                 className={`py-2 px-2 text-xs font-medium rounded-xl border transition-all text-center flex items-center justify-center gap-1.5 ${
                   status === 'partial'
                     ? 'bg-sky-600 text-white border-sky-600 shadow-xs font-semibold'
                     : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
-                } ${!isAdmin && !!taskToEdit ? 'opacity-60 cursor-not-allowed' : ''}`}
+                } ${((!isAdmin && !!taskToEdit) || (!taskToEdit && currentRole === 'editor')) ? 'opacity-40 cursor-not-allowed' : ''}`}
               >
                 <CircleDot className="w-3.5 h-3.5" />
                 <span>Parcial</span>
@@ -484,13 +504,14 @@ export const TaskModal: React.FC = () => {
               {/* Completado */}
               <button
                 type="button"
-                disabled={!isAdmin && !!taskToEdit}
+                disabled={(!isAdmin && !!taskToEdit) || (!taskToEdit && currentRole === 'editor')}
                 onClick={() => setStatus('completed')}
+                title={!taskToEdit && currentRole === 'editor' ? 'Como editor solo puedes crear notas en Sin estado o Pendiente' : undefined}
                 className={`py-2 px-2 text-xs font-medium rounded-xl border transition-all text-center flex items-center justify-center gap-1.5 ${
                   status === 'completed'
                     ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs font-semibold'
                     : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
-                } ${!isAdmin && !!taskToEdit ? 'opacity-60 cursor-not-allowed' : ''}`}
+                } ${((!isAdmin && !!taskToEdit) || (!taskToEdit && currentRole === 'editor')) ? 'opacity-40 cursor-not-allowed' : ''}`}
               >
                 <CheckCircle2 className="w-3.5 h-3.5" />
                 <span>Completado</span>

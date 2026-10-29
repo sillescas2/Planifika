@@ -914,6 +914,112 @@ class PlanifikaDataService {
     };
   }
 
+  /**
+   * Actualizar usuario en public.users y almacén local
+   */
+  public async updateUserAccount(
+    userId: string,
+    data: { full_name?: string; email?: string; password?: string; role?: 'admin' | 'user' }
+  ): Promise<{ success: boolean; error?: string }> {
+    const cleanEmail = data.email?.trim().toLowerCase();
+    const cleanName = data.full_name?.trim();
+
+    if (this.supabase && this.isLiveConnected) {
+      try {
+        let rpcHandled = false;
+        try {
+          const { error: rpcErr } = await this.supabase.rpc('update_app_user', {
+            p_id: userId,
+            p_full_name: cleanName || '',
+            p_email: cleanEmail || '',
+            p_role: data.role || 'user',
+            p_password: data.password || null,
+          });
+          if (!rpcErr) {
+            rpcHandled = true;
+          }
+        } catch (e) {
+          // RPC might not exist yet
+        }
+
+        if (!rpcHandled) {
+          const updatePayload: any = { updated_at: new Date().toISOString() };
+          if (cleanName) updatePayload.full_name = cleanName;
+          if (cleanEmail) updatePayload.email = cleanEmail;
+          if (data.role) updatePayload.role = data.role;
+          if (data.password && data.password.trim()) {
+            updatePayload.password_hash = data.password.trim();
+          }
+
+          const { error: updateErr } = await this.supabase
+            .from('users')
+            .update(updatePayload)
+            .eq('id', userId);
+
+          if (updateErr) {
+            console.warn('Error al actualizar en Supabase users:', updateErr);
+            return { success: false, error: updateErr.message || 'Error al actualizar usuario en Supabase' };
+          }
+        }
+      } catch (err: any) {
+        console.warn('Fallo al actualizar usuario en Supabase:', err);
+        return { success: false, error: err?.message || 'Error de conexión al actualizar usuario' };
+      }
+    }
+
+    // Actualizar en almacén local
+    const store = this.getLocalStore();
+    const uIdx = store.users.findIndex((u) => u.id === userId);
+    if (uIdx !== -1) {
+      if (cleanName) store.users[uIdx].full_name = cleanName;
+      if (cleanEmail) store.users[uIdx].email = cleanEmail;
+      if (data.role) store.users[uIdx].system_role = data.role;
+      if (data.password && data.password.trim()) store.users[uIdx].password = data.password.trim();
+    }
+
+    const pIdx = store.profiles.findIndex((p) => p.id === userId);
+    if (pIdx !== -1) {
+      if (cleanName) store.profiles[pIdx].full_name = cleanName;
+      if (cleanEmail) store.profiles[pIdx].email = cleanEmail;
+      if (data.role) store.profiles[pIdx].system_role = data.role;
+    }
+
+    this.saveLocalStore(store);
+    return { success: true };
+  }
+
+  /**
+   * Eliminar usuario de public.users y almacén local
+   */
+  public async deleteUserAccount(userId: string): Promise<{ success: boolean; error?: string }> {
+    if (userId === DEMO_UUIDS.CARLOS || userId === 'usr-admin-carlos') {
+      return { success: false, error: 'No se puede eliminar la cuenta principal de administración del sistema.' };
+    }
+
+    if (this.supabase && this.isLiveConnected) {
+      try {
+        await this.supabase.from('calendar_permissions').delete().eq('user_id', userId);
+        
+        const { error: delErr } = await this.supabase.from('users').delete().eq('id', userId);
+        if (delErr) {
+          console.warn('Error al eliminar usuario en Supabase:', delErr);
+          return { success: false, error: delErr.message || 'Error al eliminar usuario en la base de datos' };
+        }
+      } catch (err: any) {
+        console.warn('Fallo al eliminar usuario en Supabase:', err);
+        return { success: false, error: err?.message || 'Error de conexión al eliminar usuario' };
+      }
+    }
+
+    const store = this.getLocalStore();
+    store.users = store.users.filter((u) => u.id !== userId);
+    store.profiles = store.profiles.filter((p) => p.id !== userId);
+    store.permissions = store.permissions.filter((p) => p.user_id !== userId);
+    this.saveLocalStore(store);
+
+    return { success: true };
+  }
+
   // --- PROFILES / GESTIÓN DE USUARIOS DE LA APLICACIÓN ---
   public async getProfiles(): Promise<UserProfile[]> {
     const profileMap = new Map<string, UserProfile>();

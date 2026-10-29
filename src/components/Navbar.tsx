@@ -163,18 +163,12 @@ export const Navbar: React.FC = () => {
               </div>
             </button>
 
-            {/* Live / Demo badge */}
             <div className="hidden sm:flex items-center gap-2 text-xs text-slate-500 pl-2 border-l border-slate-200">
-              <span className="flex items-center gap-1.5">
-                <Database className="w-3.5 h-3.5 text-slate-400" />
-                <span>{isLiveConnected ? 'Supabase Live' : 'Modo Demo / RLS'}</span>
-              </span>
-
               <button
                 onClick={refreshAllData}
                 disabled={loadingTasks}
                 title="Actualizar datos desde la base de datos de Supabase"
-                className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-semibold text-slate-700 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 rounded border border-slate-200/80 transition-colors cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 text-[11px] font-semibold text-slate-700 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 rounded-lg border border-slate-200/80 transition-colors cursor-pointer"
               >
                 <RefreshCw className={`w-3 h-3 text-slate-600 ${loadingTasks ? 'animate-spin text-slate-900' : ''}`} />
                 <span>Actualizar datos</span>
